@@ -5,4 +5,4 @@ COPY . /app
 
 RUN pip install --no-cache-dir .
 
-CMD ["python", "-m", "app.main"]
+CMD ["python", "-m", "security_review.main"]
