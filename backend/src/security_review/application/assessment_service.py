@@ -9,6 +9,9 @@ from uuid import UUID
 
 import httpx
 
+from security_review.application.billing_service import BillingService
+from security_review.domain.assessment.enums import AssessmentStatus, RepositoryIngestStatus
+from security_review.domain.assessment.exceptions import RepositoryNotReadyError
 from security_review.domain.assessment.models import (
     AgentType,
     Assessment,
@@ -23,10 +26,14 @@ from security_review.domain.assessment.models import (
     ScanStatus,
     TrivyScanRequest,
 )
-from security_review.domain.assessment.enums import AssessmentStatus, RepositoryIngestStatus
-from security_review.domain.assessment.exceptions import RepositoryNotReadyError
+from security_review.domain.audit.models import ConsentAuditEntry
+from security_review.domain.auth.models import NIL_ORGANIZATION_ID
+from security_review.infrastructure.observability.metrics import FINDINGS_TOTAL, SCAN_JOBS_TOTAL
 from security_review.infrastructure.persistence.sqlite_assessment_repository import (
     SqliteAssessmentRepository,
+)
+from security_review.infrastructure.persistence.sqlite_audit_log_repository import (
+    SqliteAuditLogRepository,
 )
 from security_review.infrastructure.scanners.agent_factory import AgentFactory
 from security_review.infrastructure.vcs.git_repository_ingestion_service import (
@@ -42,12 +49,18 @@ class AssessmentService:
         self,
         repository: SqliteAssessmentRepository | None = None,
         git_ingestion_service: GitRepositoryIngestionService | None = None,
+        billing_service: BillingService | None = None,
+        audit_log_repository: SqliteAuditLogRepository | None = None,
     ) -> None:
         self._repository = repository or SqliteAssessmentRepository()
         self._repository.initialize()
         self._git_ingestion_service = git_ingestion_service or GitRepositoryIngestionService()
+        self._billing_service = billing_service or BillingService(assessment_repository=self._repository)
+        self._audit_log_repository = audit_log_repository or SqliteAuditLogRepository()
+        self._audit_log_repository.initialize()
 
     def create_assessment(self, payload: AssessmentCreateRequest, organization_id: UUID) -> AssessmentResponse:
+        self._billing_service.enforce_assessment_limit(organization_id)
         assessment = Assessment(name=payload.name, description=payload.description, organization_id=organization_id)
         self._repository.save(assessment)
         return assessment.to_response()
@@ -126,8 +139,15 @@ class AssessmentService:
             repository_store.save(assessment)
 
     def create_scan_job(
-        self, assessment_id: UUID, payload: ScanJobCreateRequest, organization_id: UUID | None = None
+        self,
+        assessment_id: UUID,
+        payload: ScanJobCreateRequest,
+        organization_id: UUID | None = None,
+        confirmed_by: str | None = None,
     ) -> ScanJob:
+        if organization_id is not None:
+            self._billing_service.enforce_scan_job_limit(organization_id)
+
         assessment = self._repository.get(assessment_id, organization_id)
         if assessment.status in (AssessmentStatus.CREATED, AssessmentStatus.COMPLETED):
             assessment.start_analysis()
@@ -147,7 +167,24 @@ class AssessmentService:
             target=target,
             status=ScanStatus.PENDING,
             webhook_url=payload.webhook_url,
+            target_authorization_confirmed=payload.target_authorization_confirmed,
         )
+
+        if payload.target_authorization_confirmed:
+            scan_job.authorized_by = confirmed_by or "unknown"
+            scan_job.authorized_at = datetime.now(UTC)
+            self._audit_log_repository.record(
+                ConsentAuditEntry(
+                    organization_id=organization_id or NIL_ORGANIZATION_ID,
+                    assessment_id=assessment.id,
+                    scan_job_id=scan_job.id,
+                    agent_type=payload.agent_type.value,
+                    target=target or "",
+                    confirmed_by=scan_job.authorized_by,
+                    confirmed_at=scan_job.authorized_at,
+                )
+            )
+
         assessment.scan_jobs.append(scan_job)
         assessment.updated_at = datetime.now(UTC)
         self._repository.save(assessment)
@@ -180,7 +217,9 @@ class AssessmentService:
         findings: list[Finding] = []
         try:
             agent = AgentFactory.create(scan_job.agent_type)
-            findings = agent.execute(scan_job.target)
+            findings = agent.execute(
+                scan_job.target, authorized=scan_job.target_authorization_confirmed
+            )
             assessment.findings.extend(findings)
             scan_job.status = ScanStatus.COMPLETED
             scan_job.completed_at = datetime.now(UTC)
@@ -193,6 +232,12 @@ class AssessmentService:
             assessment.updated_at = datetime.now(UTC)
             repository.save(assessment)
             self._notify_webhook(scan_job, findings)
+            self._record_scan_metrics(scan_job, findings)
+
+    def _record_scan_metrics(self, scan_job: ScanJob, findings: list[Finding]) -> None:
+        SCAN_JOBS_TOTAL.labels(agent_type=scan_job.agent_type.value, status=scan_job.status.value).inc()
+        for finding in findings:
+            FINDINGS_TOTAL.labels(severity=finding.severity.value).inc()
 
     def _notify_webhook(self, scan_job: ScanJob, findings: list[Finding]) -> None:
         if not scan_job.webhook_url:
@@ -293,7 +338,9 @@ class AssessmentService:
 
         try:
             agent = AgentFactory.create(scan_job.agent_type)
-            findings = agent.execute(scan_job.target)
+            findings = agent.execute(
+                scan_job.target, authorized=scan_job.target_authorization_confirmed
+            )
             assessment.findings.extend(findings)
             scan_job.status = ScanStatus.COMPLETED
             scan_job.completed_at = datetime.now(UTC)
@@ -307,6 +354,7 @@ class AssessmentService:
             assessment.updated_at = datetime.now(UTC)
             self._repository.save(assessment)
             self._notify_webhook(scan_job, findings)
+            self._record_scan_metrics(scan_job, findings)
 
         return findings
 
@@ -333,6 +381,11 @@ class AssessmentService:
             "repositories": [repository.name for repository in assessment.repositories],
         }
 
+    def get_consent_audit_log(self, organization_id: UUID) -> list[ConsentAuditEntry]:
+        """Return the immutable authorization-consent trail for active scanning in this org."""
+        return self._audit_log_repository.list(organization_id)
+
+
     def _finding_title(self, agent_type: object) -> str:
         title_map = {
             "white_box": "White Box analysis completed",
@@ -343,6 +396,7 @@ class AssessmentService:
             "cloud_security": "Cloud security posture review completed",
             "dependency_security": "Dependency vulnerability review completed",
             "secret_detection": "Secret exposure review completed",
+            "auto_remediation": "Auto-remediation completed",
         }
         return title_map.get(agent_type.value, "Security scan completed")
 
@@ -356,6 +410,7 @@ class AssessmentService:
             "cloud_security": FindingSeverity.HIGH,
             "dependency_security": FindingSeverity.HIGH,
             "secret_detection": FindingSeverity.CRITICAL,
+            "auto_remediation": FindingSeverity.MEDIUM,
         }
         return severity_map.get(agent_type.value, FindingSeverity.MEDIUM)
 

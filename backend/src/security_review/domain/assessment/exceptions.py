@@ -12,3 +12,7 @@ class RepositoryNotReadyError(AssessmentError):
 
 class UnauthorizedScanTargetError(AssessmentError):
     """Raised when a dynamic (live-network) scan is requested without confirmed authorization."""
+
+
+class PlanLimitExceededError(AssessmentError):
+    """Raised when an organization's plan limit (assessments or scan jobs) is exceeded."""

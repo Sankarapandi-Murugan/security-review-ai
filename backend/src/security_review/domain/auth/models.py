@@ -7,6 +7,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, EmailStr, Field
 
+from security_review.domain.billing.models import PlanTier
+
 # Fixed organization id used for unauthenticated/legacy requests so existing
 # single-tenant behavior keeps working when no auth token is provided.
 NIL_ORGANIZATION_ID = UUID("00000000-0000-0000-0000-000000000000")
@@ -22,6 +24,9 @@ class UserRole(str, Enum):
 class Organization:
     id: UUID = field(default_factory=uuid4)
     name: str = ""
+    plan: PlanTier = PlanTier.FREE
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -44,6 +49,24 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)
+
+
+class InviteMemberRequest(BaseModel):
+    email: EmailStr
+    role: UserRole = UserRole.MEMBER
+
+
+class ChangeMemberRoleRequest(BaseModel):
+    role: UserRole
 
 
 class UserResponse(BaseModel):

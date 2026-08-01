@@ -32,6 +32,7 @@ class AgentType(str, Enum):
     DEPENDENCY_SECURITY = "dependency_security"
     SECRET_DETECTION = "secret_detection"
     TRIVY = "trivy"
+    AUTO_REMEDIATION = "auto_remediation"
 
 
 class Finding(BaseModel):
@@ -61,6 +62,8 @@ class ScanJob(BaseModel):
     error_message: str | None = None
     webhook_url: str | None = None
     target_authorization_confirmed: bool = False
+    authorized_by: str | None = None
+    authorized_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

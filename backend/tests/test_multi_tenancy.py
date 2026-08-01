@@ -54,21 +54,13 @@ def test_assessments_are_isolated_between_organizations() -> None:
     assert any(item["id"] == assessment_id for item in own_list_response.json())
 
 
-def test_unauthenticated_requests_use_shared_legacy_organization() -> None:
+def test_unauthenticated_requests_require_login() -> None:
     client = TestClient(app)
 
+    # There is no anonymous/legacy organization fallback anymore -- every
+    # assessment endpoint requires signing up or logging in first.
     create_response = client.post(
         "/assessments",
-        json={"name": "Legacy assessment", "description": "no auth token used"},
+        json={"name": "No auth assessment", "description": "no auth token used"},
     )
-    assert create_response.status_code == 201
-    assessment_id = create_response.json()["id"]
-
-    # Still retrievable without a token (legacy/demo single-tenant behavior preserved).
-    get_response = client.get(f"/assessments/{assessment_id}")
-    assert get_response.status_code == 200
-
-    # A logged-in user from a real organization must not see the legacy assessment.
-    token = _signup(client, "Org C")
-    other_org_response = client.get(f"/assessments/{assessment_id}", headers=_auth_headers(token))
-    assert other_org_response.status_code == 404
+    assert create_response.status_code == 401

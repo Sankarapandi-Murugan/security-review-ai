@@ -7,9 +7,48 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # SECURITY_REVIEW_ENVIRONMENT defaults to "development" (unset), which keeps
+      # this quick-start config working out of the box. Setting it to "production"
+      # makes the backend refuse to start unless the values below are replaced with
+      # real, unique secrets (see infrastructure/security/secrets_validation.py).
       SECURITY_REVIEW_AUTH_REQUIRED: "false"
       SECURITY_REVIEW_API_KEY: "demo-key"
       SECURITY_REVIEW_JWT_SECRET: "change-me-to-a-random-32-byte-secret-in-production"
+      # Uncomment to run against Postgres/Redis (the "production" profile below)
+      # instead of the default local SQLite file / in-memory rate limiter:
+      # DATABASE_URL: postgresql+psycopg://vigil:vigil@postgres:5432/vigil
+      # REDIS_URL: redis://redis:6379/0
     volumes:
       - ./backend/data:/app/data
     command: ["python", "-m", "uvicorn", "security_review.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  # Optional production-like datastores. Start alongside the backend with:
+  #   docker compose --profile production up --build
+  # Then uncomment DATABASE_URL/REDIS_URL above (or set them in the environment)
+  # so the backend actually uses them instead of SQLite/in-memory.
+  postgres:
+    image: postgres:16-alpine
+    container_name: security-review-ai-postgres
+    profiles: ["production"]
+    environment:
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: vigil
+      POSTGRES_DB: vigil
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: security-review-ai-redis
+    profiles: ["production"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
+

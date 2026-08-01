@@ -3,16 +3,19 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from security_review.main import app
+from tests._auth_helpers import signup_headers
 
 REAL_PUBLIC_REPO = "https://github.com/octocat/Hello-World"
 
 
 def test_repository_ingestion_and_scan_flow() -> None:
     client = TestClient(app)
+    headers = signup_headers(client)
 
     assessment_response = client.post(
         "/assessments",
         json={"name": "Repo review", "description": "Analyze a repository"},
+        headers=headers,
     )
     assert assessment_response.status_code == 201
     assessment_id = assessment_response.json()["id"]
@@ -20,6 +23,7 @@ def test_repository_ingestion_and_scan_flow() -> None:
     ingest_response = client.post(
         f"/assessments/{assessment_id}/repositories",
         json={"name": "hello-world", "url": REAL_PUBLIC_REPO, "branch": "master"},
+        headers=headers,
     )
     assert ingest_response.status_code == 201
     repository = ingest_response.json()
@@ -32,7 +36,9 @@ def test_repository_ingestion_and_scan_flow() -> None:
 
     # By the time TestClient's request/response cycle completes, the background
     # clone has already run (Starlette executes background tasks before returning).
-    get_response = client.get(f"/assessments/{assessment_id}/repositories/{repository['id']}")
+    get_response = client.get(
+        f"/assessments/{assessment_id}/repositories/{repository['id']}", headers=headers
+    )
     assert get_response.status_code == 200
     ready_repository = get_response.json()
     assert ready_repository["status"] == "ready"
@@ -43,6 +49,7 @@ def test_repository_ingestion_and_scan_flow() -> None:
     scan_response = client.post(
         f"/assessments/{assessment_id}/scan-jobs",
         json={"agent_type": "dependency_security", "repository_id": repository["id"]},
+        headers=headers,
     )
     assert scan_response.status_code == 201
     scan_job = scan_response.json()
@@ -52,10 +59,12 @@ def test_repository_ingestion_and_scan_flow() -> None:
 
 def test_repository_ingestion_rejects_disallowed_url_scheme() -> None:
     client = TestClient(app)
+    headers = signup_headers(client)
 
     assessment_response = client.post(
         "/assessments",
         json={"name": "Invalid scheme review", "description": "Test URL validation"},
+        headers=headers,
     )
     assert assessment_response.status_code == 201
     assessment_id = assessment_response.json()["id"]
@@ -63,11 +72,14 @@ def test_repository_ingestion_rejects_disallowed_url_scheme() -> None:
     ingest_response = client.post(
         f"/assessments/{assessment_id}/repositories",
         json={"name": "local-file", "url": "file:///etc/passwd", "branch": "main"},
+        headers=headers,
     )
     assert ingest_response.status_code == 201
     repository = ingest_response.json()
 
-    get_response = client.get(f"/assessments/{assessment_id}/repositories/{repository['id']}")
+    get_response = client.get(
+        f"/assessments/{assessment_id}/repositories/{repository['id']}", headers=headers
+    )
     assert get_response.status_code == 200
     failed_repository = get_response.json()
     assert failed_repository["status"] == "failed"
@@ -77,10 +89,12 @@ def test_repository_ingestion_rejects_disallowed_url_scheme() -> None:
 
 def test_scan_job_rejects_repository_that_failed_to_ingest() -> None:
     client = TestClient(app)
+    headers = signup_headers(client)
 
     assessment_response = client.post(
         "/assessments",
         json={"name": "Failed ingest review", "description": "Test not-ready repository"},
+        headers=headers,
     )
     assert assessment_response.status_code == 201
     assessment_id = assessment_response.json()["id"]
@@ -88,6 +102,7 @@ def test_scan_job_rejects_repository_that_failed_to_ingest() -> None:
     ingest_response = client.post(
         f"/assessments/{assessment_id}/repositories",
         json={"name": "bad-repo", "url": "https://github.com/example/does-not-exist-repo", "branch": "main"},
+        headers=headers,
     )
     assert ingest_response.status_code == 201
     repository = ingest_response.json()
@@ -95,16 +110,19 @@ def test_scan_job_rejects_repository_that_failed_to_ingest() -> None:
     scan_response = client.post(
         f"/assessments/{assessment_id}/scan-jobs",
         json={"agent_type": "white_box", "repository_id": repository["id"]},
+        headers=headers,
     )
     assert scan_response.status_code == 409
 
 
 def test_list_and_get_assessment_repositories() -> None:
     client = TestClient(app)
+    headers = signup_headers(client)
 
     assessment_response = client.post(
         "/assessments",
         json={"name": "Repository catalog review", "description": "Test repository listing"},
+        headers=headers,
     )
     assert assessment_response.status_code == 201
     assessment_id = assessment_response.json()["id"]
@@ -112,18 +130,21 @@ def test_list_and_get_assessment_repositories() -> None:
     ingest_response = client.post(
         f"/assessments/{assessment_id}/repositories",
         json={"name": "hello-world", "url": REAL_PUBLIC_REPO, "branch": "master"},
+        headers=headers,
     )
     assert ingest_response.status_code == 201
     repository = ingest_response.json()
 
-    list_response = client.get(f"/assessments/{assessment_id}/repositories")
+    list_response = client.get(f"/assessments/{assessment_id}/repositories", headers=headers)
     assert list_response.status_code == 200
     repositories = list_response.json()
     assert len(repositories) == 1
     assert repositories[0]["id"] == repository["id"]
     assert repositories[0]["name"] == "hello-world"
 
-    get_response = client.get(f"/assessments/{assessment_id}/repositories/{repository['id']}")
+    get_response = client.get(
+        f"/assessments/{assessment_id}/repositories/{repository['id']}", headers=headers
+    )
     assert get_response.status_code == 200
     repository_detail = get_response.json()
     assert repository_detail["id"] == repository["id"]

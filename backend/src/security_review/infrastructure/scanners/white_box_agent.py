@@ -12,7 +12,7 @@ class WhiteBoxAgent(Agent):
     
     agent_type = AgentType.WHITE_BOX
 
-    def execute(self, target: str | None) -> list[Finding]:
+    def execute(self, target: str | None, *, authorized: bool = False) -> list[Finding]:
         """Run Bandit on Python code and parse results."""
         findings = []
         

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vigil AI — Autonomous Security Engineers</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { background: #07111f; color: #f3f8ff; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 64px 24px 96px; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 64px; }
+    .brand { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
+    .brand span { color: #24a2ff; }
+    nav a { color: #b7c9de; text-decoration: none; margin-left: 24px; font-weight: 600; font-size: 14px; }
+    nav a:hover { color: #fff; }
+    .badge { display: inline-block; padding: 6px 14px; border-radius: 999px; background: rgba(36,162,255,0.12); border: 1px solid rgba(36,162,255,0.4); color: #7fc4ff; font-size: 13px; font-weight: 600; margin-bottom: 24px; }
+    h1 { font-size: 48px; line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 20px; }
+    h1 .accent { color: #24a2ff; }
+    .lede { font-size: 19px; line-height: 1.6; color: #b7c9de; max-width: 640px; margin: 0 0 36px; }
+    .cta-row { display: flex; gap: 14px; margin-bottom: 72px; flex-wrap: wrap; }
+    .btn { display: inline-block; padding: 13px 26px; border-radius: 10px; font-weight: 700; font-size: 15px; text-decoration: none; }
+    .btn.primary { background: #24a2ff; color: #051221; }
+    .btn.secondary { background: rgba(255,255,255,0.08); color: #f3f8ff; border: 1px solid rgba(255,255,255,0.16); }
+    .mission { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; padding: 32px; margin-bottom: 56px; }
+    .mission h2 { margin-top: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: #7fc4ff; }
+    .mission p { font-size: 22px; line-height: 1.5; margin: 8px 0 0; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-bottom: 56px; }
+    .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 22px; }
+    .card h3 { margin: 0 0 8px; font-size: 16px; }
+    .card p { margin: 0; color: #b7c9de; font-size: 14px; line-height: 1.5; }
+    .pipeline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 56px; }
+    .pipeline .step { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; }
+    .pipeline .arrow { color: #4a6a8f; font-size: 18px; }
+    footer { color: #6b839e; font-size: 13px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px; }
+    footer a { color: #7fc4ff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">Vigil<span>AI</span></div>
+      <nav>
+        <a href="/ui/">Log in</a>
+        <a href="/ui/">Dashboard</a>
+        <a href="/docs">API Docs</a>
+        <a href="https://github.com/Sankarapandi-Murugan/security-review-ai">GitHub</a>
+      </nav>
+    </header>
+
+    <span class="badge">9 autonomous security agents, one platform</span>
+    <h1>Autonomous AI <span class="accent">security engineers</span> that never sleep.</h1>
+    <p class="lede">
+      Vigil AI discovers, validates, and remediates vulnerabilities across your applications, APIs,
+      infrastructure, and cloud environments &mdash; faster than a human security team, and continuously.
+    </p>
+    <div class="cta-row">
+      <a class="btn primary" href="/ui/">Open the dashboard</a>
+      <a class="btn secondary" href="/docs">Explore the API</a>
+    </div>
+
+    <div class="mission">
+      <h2>Our mission</h2>
+      <p>Build autonomous AI security engineers that discover, validate, and remediate
+        vulnerabilities faster than human teams.</p>
+    </div>
+
+    <div class="pipeline">
+      <div class="step">Discover</div>
+      <span class="arrow">&rarr;</span>
+      <div class="step">Validate</div>
+      <span class="arrow">&rarr;</span>
+      <div class="step">Remediate</div>
+      <span class="arrow">&rarr;</span>
+      <div class="step">Verify</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>White Box</h3>
+        <p>Static analysis (Bandit) for OWASP Top 10, CWE, and insecure coding patterns across your codebase.</p>
+      </div>
+      <div class="card">
+        <h3>Black Box</h3>
+        <p>Crawls live targets, discovers endpoints, and probes for XSS, SQLi, CSRF, and missing security headers with reproducible PoCs.</p>
+      </div>
+      <div class="card">
+        <h3>Red Team</h3>
+        <p>Simulates attacker behavior &mdash; chains findings into end-to-end attack paths, privilege escalation, and lateral movement.</p>
+      </div>
+      <div class="card">
+        <h3>Blue Team</h3>
+        <p>Ingests SIEM/EDR/firewall logs, detects brute-force and scanning activity, and produces incident reports.</p>
+      </div>
+      <div class="card">
+        <h3>API Security</h3>
+        <p>Imports OpenAPI specs, discovers hidden endpoints, and tests rate limiting and JWT validation.</p>
+      </div>
+      <div class="card">
+        <h3>Cloud Security</h3>
+        <p>Audits cloud configuration, IAM, and container posture for common misconfigurations.</p>
+      </div>
+      <div class="card">
+        <h3>Dependency Security</h3>
+        <p>Scans dependency manifests for known-vulnerable packages and recommends safe upgrades.</p>
+      </div>
+      <div class="card">
+        <h3>Secret Detection</h3>
+        <p>Finds exposed API keys, passwords, and tokens before they leak into version control.</p>
+      </div>
+      <div class="card">
+        <h3>Auto-Remediation</h3>
+        <p>Automatically fixes safe, mechanical findings, re-scans to verify the fix, and opens a pull request.</p>
+      </div>
+    </div>
+
+    <footer>
+      Vigil AI is built on the open security-review-ai platform. Multi-tenant, self-hostable, and
+      API-first &mdash; see the <a href="https://github.com/Sankarapandi-Murugan/security-review-ai">README</a> for setup instructions.
+    </footer>
+  </div>
+</body>
+</html>

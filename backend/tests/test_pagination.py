@@ -20,6 +20,10 @@ def test_list_assessments_pagination() -> None:
     token = _signup(client)
     headers = {"Authorization": f"Bearer {token}"}
 
+    # The Free plan caps assessments at 3; upgrade to Pro so this test can create 5.
+    upgrade = client.post("/billing/subscribe", json={"plan": "pro"}, headers=headers)
+    assert upgrade.status_code == 200
+
     created_ids = []
     for i in range(5):
         response = client.post(
@@ -62,12 +66,14 @@ def test_list_assessments_default_limit_applies() -> None:
 
 def test_list_assessments_rejects_invalid_limit() -> None:
     client = TestClient(app)
+    token = _signup(client)
+    headers = {"Authorization": f"Bearer {token}"}
 
-    too_small = client.get("/assessments?limit=0")
+    too_small = client.get("/assessments?limit=0", headers=headers)
     assert too_small.status_code == 422
 
-    too_large = client.get("/assessments?limit=500")
+    too_large = client.get("/assessments?limit=500", headers=headers)
     assert too_large.status_code == 422
 
-    negative_offset = client.get("/assessments?offset=-1")
+    negative_offset = client.get("/assessments?offset=-1", headers=headers)
     assert negative_offset.status_code == 422

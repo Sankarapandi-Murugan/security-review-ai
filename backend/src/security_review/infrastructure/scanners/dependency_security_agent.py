@@ -12,7 +12,7 @@ class DependencySecurityAgent(Agent):
     
     agent_type = AgentType.DEPENDENCY_SECURITY
 
-    def execute(self, target: str | None) -> list[Finding]:
+    def execute(self, target: str | None, *, authorized: bool = False) -> list[Finding]:
         """Check dependencies for vulnerabilities using Safety."""
         findings = []
         

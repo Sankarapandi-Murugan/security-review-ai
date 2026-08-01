@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import os
+import secrets
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
 
 from security_review.domain.auth.models import (
+    ForgotPasswordRequest,
     LoginRequest,
     Organization,
+    ResetPasswordRequest,
     SignupRequest,
     TokenResponse,
     User,
     UserResponse,
     UserRole,
+)
+from security_review.infrastructure.email.email_provider import EmailProvider, get_email_provider
+from security_review.infrastructure.persistence.sqlite_password_reset_repository import (
+    SqlitePasswordResetRepository,
 )
 from security_review.infrastructure.persistence.sqlite_user_repository import (
     SqliteUserRepository,
@@ -35,10 +42,22 @@ class InvalidTokenError(Exception):
     """Raised when a JWT access token is missing, malformed, or expired."""
 
 
+class InvalidResetTokenError(Exception):
+    """Raised when a password-reset token is missing, unknown, expired, or already used."""
+
+
 class AuthService:
-    def __init__(self, repository: SqliteUserRepository | None = None) -> None:
+    def __init__(
+        self,
+        repository: SqliteUserRepository | None = None,
+        reset_repository: SqlitePasswordResetRepository | None = None,
+        email_provider: EmailProvider | None = None,
+    ) -> None:
         self._repository = repository or SqliteUserRepository()
         self._repository.initialize()
+        self._reset_repository = reset_repository or SqlitePasswordResetRepository()
+        self._reset_repository.initialize()
+        self._email_provider = email_provider or get_email_provider()
 
     @staticmethod
     def _jwt_secret() -> str:
@@ -79,6 +98,30 @@ class AuthService:
             raise InvalidTokenError("User no longer exists.")
 
         return user
+
+    def request_password_reset(self, payload: ForgotPasswordRequest, base_url: str) -> None:
+        """Generate and email a password-reset link if the email is registered.
+
+        Always succeeds regardless of whether the email exists, to avoid leaking
+        which emails are registered (a classic user-enumeration vector).
+        """
+        user = self._repository.get_user_by_email(payload.email)
+        if user is None:
+            return
+
+        raw_token = secrets.token_urlsafe(32)
+        self._reset_repository.create(uuid4(), user.id, raw_token)
+
+        reset_url = f"{base_url}/ui/?reset_token={raw_token}"
+        self._email_provider.send_password_reset_email(user.email, reset_url)
+
+    def reset_password(self, payload: ResetPasswordRequest) -> None:
+        user_id = self._reset_repository.resolve_valid_user_id(payload.token)
+        if user_id is None:
+            raise InvalidResetTokenError("This password reset link is invalid or has expired.")
+
+        self._repository.update_user_password(user_id, hash_password(payload.new_password))
+        self._reset_repository.mark_used(payload.token)
 
     def _issue_token(self, user: User) -> TokenResponse:
         now = datetime.now(UTC)

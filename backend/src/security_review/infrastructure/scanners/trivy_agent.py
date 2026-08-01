@@ -16,7 +16,7 @@ class TrivyAgent(Agent):
 
     agent_type = AgentType.TRIVY
 
-    def execute(self, target: str | None) -> list[Finding]:
+    def execute(self, target: str | None, *, authorized: bool = False) -> list[Finding]:
         findings: list[Finding] = []
 
         if not target:

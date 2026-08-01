@@ -39,6 +39,7 @@
 
       .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 20px; margin-bottom: 18px; }
       input, select, button { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2c4d76; margin-top: 8px; background: rgba(255,255,255,0.03); color: inherit; font: inherit; }
+      option { background: #0b1c2f; color: #f3f8ff; }
       button { cursor: pointer; background: #24a2ff; color: white; border: none; font-weight: 600; }
       button.secondary { background: rgba(255,255,255,0.1); }
       .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #17395c; margin-right: 8px; margin-top: 8px; font-size: 12px; }
@@ -56,6 +57,33 @@
       .progress-bar { height: 100%; width: 0%; background: #24a2ff; transition: width 0.4s ease; }
       .progress-bar.completed { background: #2ecc71; width: 100% !important; }
       .progress-bar.failed { background: #e74c3c; width: 100% !important; }
+
+      .modal-backdrop { position: fixed; inset: 0; background: rgba(2,8,16,0.7); display: flex; align-items: center; justify-content: center; z-index: 50; }
+      .modal-card { background: #0b1c2f; border: 1px solid rgba(255,255,255,0.15); border-radius: 16px; padding: 24px; width: 680px; max-width: 92vw; max-height: 86vh; overflow-y: auto; }
+      .modal-card h3 { margin: 0; }
+      .modal-close-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+      .modal-close-row button { width: auto; padding: 6px 14px; margin-top: 0; }
+      .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 8px; }
+      .plan-card { border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 16px; background: rgba(255,255,255,0.04); }
+      .plan-card.current { border-color: #24a2ff; background: rgba(36,162,255,0.12); }
+      .plan-card h4 { margin: 0 0 6px; font-size: 15px; }
+      .plan-card .price { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+      .plan-card ul { padding-left: 18px; margin: 10px 0; font-size: 12px; color: #b7c9de; line-height: 1.5; }
+      .plan-card button { margin-top: 6px; }
+      .billing-trigger { margin-top: 8px; }
+
+      .auth-widget { margin-bottom: 14px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 10px; font-size: 13px; }
+      .auth-widget .signed-in { display: flex; flex-direction: column; gap: 6px; }
+      .auth-widget .signed-in button { margin-top: 2px; }
+      .auth-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+      .auth-tabs button { width: auto; flex: 1; padding: 6px 8px; font-size: 12px; background: rgba(255,255,255,0.06); color: #b7c9de; }
+      .auth-tabs button.active { background: #24a2ff; color: #051221; }
+      .auth-form { display: none; }
+      .auth-form.active { display: block; }
+      .auth-error { color: #ff8a8a; font-size: 12px; margin-top: 6px; display: none; }
+      table.audit-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+      table.audit-table th, table.audit-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+      table.audit-table th { color: #7fc4ff; font-weight: 600; }
     </style>
   </head>
   <body>
@@ -63,7 +91,13 @@
       <aside class="sidebar">
         <h1>Security Review AI</h1>
         <p class="subtitle">Assessments</p>
+
+        <div class="auth-widget" id="auth-widget"></div>
+
         <button id="new-assessment-toggle" class="secondary" onclick="toggleNewAssessmentForm()">+ New assessment</button>
+        <button class="secondary billing-trigger" onclick="openBillingModal()">Billing &amp; plans</button>
+        <button class="secondary billing-trigger" onclick="openAuditLogModal()">Consent audit log</button>
+        <button class="secondary billing-trigger" onclick="openTeamModal()">Team</button>
         <div class="new-assessment-form" id="new-assessment-form">
           <input id="assessment-name" placeholder="Assessment name" />
           <input id="assessment-description" placeholder="Description (optional)" />
@@ -113,11 +147,18 @@
                 <option value="blue_team">Blue Team</option>
                 <option value="secret_detection">Secret Detection</option>
                 <option value="trivy">Trivy (Container/FS)</option>
+                <option value="auto_remediation">Auto-Remediation</option>
               </select>
               <select id="scan-repository">
                 <option value="">Manual target (below)</option>
               </select>
               <input id="scan-target" placeholder="Target (e.g. requirements.txt)" />
+              <label style="display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; color:#b7c9de;">
+                <input type="checkbox" id="scan-authorized" style="width:auto; margin-top:0;" />
+                I have explicit authorization to actively test this target (required for Black
+                Box / API Security live probing, e.g. crawling, injection tests, rate-limit and
+                JWT checks)
+              </label>
               <button onclick="runScan()">Launch scan</button>
 
               <div id="scan-status" style="display:none; margin-top: 16px;">
@@ -141,9 +182,224 @@
       </main>
     </div>
 
+    <div class="modal-backdrop" id="billing-modal" style="display:none;">
+      <div class="modal-card">
+        <div class="modal-close-row">
+          <h3>Billing &amp; plans</h3>
+          <button class="secondary" onclick="closeBillingModal()">Close</button>
+        </div>
+        <p class="muted">
+          Requests made without an <code>Authorization</code> bearer token (like this dashboard)
+          operate on a shared legacy organization that is exempt from plan limits. Sign up via
+          <code>POST /auth/signup</code> and call these endpoints with a bearer token to manage a
+          real organization's plan.
+        </p>
+        <div id="billing-usage" class="muted">Loading usage&hellip;</div>
+        <div id="billing-plans" class="plan-grid">Loading plans&hellip;</div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="audit-modal" style="display:none;">
+      <div class="modal-card">
+        <div class="modal-close-row">
+          <h3>Consent audit log</h3>
+          <button class="secondary" onclick="closeAuditLogModal()">Close</button>
+        </div>
+        <p class="muted">
+          An immutable record of who confirmed <code>target_authorization_confirmed</code> for
+          active/intrusive scanning (Black Box crawling &amp; injection probes, API Security rate-limit
+          &amp; JWT tests), and when. Requires signing in to see your organization's real log &mdash;
+          the shared legacy/unauthenticated organization records entries as
+          "anonymous (legacy organization)".
+        </p>
+        <div id="audit-log-content">Loading&hellip;</div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="team-modal" style="display:none;">
+      <div class="modal-card">
+        <div class="modal-close-row">
+          <h3>Team</h3>
+          <button class="secondary" onclick="closeTeamModal()">Close</button>
+        </div>
+        <p class="muted">
+          Owners can invite teammates, change roles, and remove members. Admins can invite
+          teammates. Members can create assessments and run scans, but can't delete them or
+          manage billing/team.
+        </p>
+        <div id="team-invite-form">
+          <input id="team-invite-email" placeholder="Email" />
+          <select id="team-invite-role">
+            <option value="member">Member</option>
+            <option value="admin">Admin</option>
+            <option value="owner">Owner</option>
+          </select>
+          <button onclick="inviteTeamMember()">Send invite</button>
+        </div>
+        <div class="auth-error" id="team-error"></div>
+        <div id="team-members-content">Loading&hellip;</div>
+      </div>
+    </div>
+
     <script>
       let currentAssessmentId = null;
       let activeScanStream = null;
+      let authToken = localStorage.getItem('vigil_token');
+      let currentUser = JSON.parse(localStorage.getItem('vigil_user') || 'null');
+
+      function authHeaders(extra = {}) {
+        return authToken ? { ...extra, Authorization: `Bearer ${authToken}` } : extra;
+      }
+
+      function renderAuthWidget() {
+        const el = document.getElementById('auth-widget');
+        if (authToken && currentUser) {
+          el.innerHTML = `
+            <div class="signed-in">
+              <div>Signed in as <strong>${currentUser.email}</strong></div>
+              <div class="muted">Org: ${currentUser.organization_id.slice(0, 8)}&hellip; (${currentUser.role})</div>
+              <button class="secondary" onclick="logout()">Log out</button>
+            </div>
+          `;
+          return;
+        }
+
+        const resetToken = new URLSearchParams(window.location.search).get('reset_token');
+        if (resetToken) {
+          el.innerHTML = `
+            <p class="muted">Choose a new password.</p>
+            <input id="reset-password-new" type="password" placeholder="New password (min 8 chars)" />
+            <button onclick="submitPasswordReset('${resetToken}')">Set new password</button>
+            <div class="auth-error" id="auth-error"></div>
+          `;
+          return;
+        }
+
+        el.innerHTML = `
+          <div class="auth-tabs">
+            <button id="auth-tab-login" class="active" onclick="showAuthTab('login')">Log in</button>
+            <button id="auth-tab-signup" onclick="showAuthTab('signup')">Sign up</button>
+          </div>
+          <div class="auth-form active" id="auth-form-login">
+            <input id="login-email" placeholder="Email" />
+            <input id="login-password" type="password" placeholder="Password" />
+            <button onclick="login()">Log in</button>
+            <a href="#" class="muted" style="display:block; margin-top:8px; font-size:12px;" onclick="showAuthTab('forgot'); return false;">Forgot password?</a>
+          </div>
+          <div class="auth-form" id="auth-form-signup">
+            <input id="signup-org" placeholder="Organization name" />
+            <input id="signup-email" placeholder="Email" />
+            <input id="signup-password" type="password" placeholder="Password (min 8 chars)" />
+            <button onclick="signup()">Create account</button>
+          </div>
+          <div class="auth-form" id="auth-form-forgot">
+            <input id="forgot-email" placeholder="Email" />
+            <button onclick="requestPasswordReset()">Send reset link</button>
+            <a href="#" class="muted" style="display:block; margin-top:8px; font-size:12px;" onclick="showAuthTab('login'); return false;">Back to log in</a>
+          </div>
+          <div class="auth-error" id="auth-error"></div>
+        `;
+      }
+
+      function showAuthTab(tab) {
+        document.getElementById('auth-tab-login').classList.toggle('active', tab === 'login');
+        document.getElementById('auth-tab-signup').classList.toggle('active', tab === 'signup');
+        document.getElementById('auth-form-login').classList.toggle('active', tab === 'login');
+        document.getElementById('auth-form-signup').classList.toggle('active', tab === 'signup');
+        document.getElementById('auth-form-forgot').classList.toggle('active', tab === 'forgot');
+      }
+
+      function showAuthError(message) {
+        const el = document.getElementById('auth-error');
+        el.textContent = message;
+        el.style.display = 'block';
+      }
+
+      async function login() {
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const response = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showAuthError(body.detail || 'Login failed.');
+          return;
+        }
+        onAuthenticated(body);
+      }
+
+      async function signup() {
+        const organization_name = document.getElementById('signup-org').value;
+        const email = document.getElementById('signup-email').value;
+        const password = document.getElementById('signup-password').value;
+        const response = await fetch('/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization_name, email, password })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showAuthError(body.detail || 'Signup failed.');
+          return;
+        }
+        onAuthenticated(body);
+      }
+
+      async function requestPasswordReset() {
+        const email = document.getElementById('forgot-email').value;
+        const response = await fetch('/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const body = await response.json().catch(() => ({}));
+        showAuthError(body.detail || 'If an account with that email exists, a reset link has been sent.');
+      }
+
+      async function submitPasswordReset(token) {
+        const new_password = document.getElementById('reset-password-new').value;
+        const response = await fetch('/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, new_password })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showAuthError(body.detail || 'Failed to reset password.');
+          return;
+        }
+        alert(body.detail || 'Password reset. Please log in.');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('reset_token');
+        window.location.href = url.toString();
+      }
+
+      function onAuthenticated(tokenResponse) {
+        authToken = tokenResponse.access_token;
+        currentUser = tokenResponse.user;
+        localStorage.setItem('vigil_token', authToken);
+        localStorage.setItem('vigil_user', JSON.stringify(currentUser));
+        renderAuthWidget();
+        renderAssessments();
+      }
+
+      function logout() {
+        authToken = null;
+        currentUser = null;
+        localStorage.removeItem('vigil_token');
+        localStorage.removeItem('vigil_user');
+        currentAssessmentId = null;
+        renderAuthWidget();
+        renderAssessments();
+        document.getElementById('tabs').style.display = 'none';
+        document.getElementById('tab-content').style.display = 'none';
+        document.getElementById('empty-state').style.display = 'flex';
+      }
+
+      renderAuthWidget();
 
       const PROGRESS_BY_STATUS = { pending: 15, running: 60, completed: 100, failed: 100 };
 
@@ -190,6 +446,97 @@
         document.getElementById('new-assessment-form').classList.toggle('open');
       }
 
+      function openBillingModal() {
+        document.getElementById('billing-modal').style.display = 'flex';
+        loadBillingUsage();
+        loadBillingPlans();
+      }
+
+      function closeBillingModal() {
+        document.getElementById('billing-modal').style.display = 'none';
+      }
+
+      async function loadBillingUsage() {
+        const el = document.getElementById('billing-usage');
+        if (!authToken) {
+          el.textContent = 'Sign in to view your plan and usage.';
+          return;
+        }
+        try {
+          const response = await fetch('/billing/usage', { headers: authHeaders() });
+          if (!response.ok) throw new Error('Failed to load usage');
+          const usage = await response.json();
+          const maxAssessments = usage.plan.max_assessments === null ? 'unlimited' : usage.plan.max_assessments;
+          const maxScanJobs = usage.plan.max_scan_jobs === null ? 'unlimited' : usage.plan.max_scan_jobs;
+          el.innerHTML = `Current plan: <strong>${usage.plan.name}</strong> &mdash; ` +
+            `${usage.assessments_used} / ${maxAssessments} assessments, ` +
+            `${usage.scan_jobs_used} / ${maxScanJobs} scan jobs used.`;
+          window.__currentPlanTier = usage.plan.tier;
+          renderBillingPlans(window.__billingPlans);
+        } catch (err) {
+          el.textContent = 'Could not load current usage.';
+        }
+      }
+
+      async function loadBillingPlans() {
+        try {
+          const response = await fetch('/billing/plans');
+          if (!response.ok) throw new Error('Failed to load plans');
+          window.__billingPlans = await response.json();
+          renderBillingPlans(window.__billingPlans);
+        } catch (err) {
+          document.getElementById('billing-plans').textContent = 'Could not load plans.';
+        }
+      }
+
+      function renderBillingPlans(plans) {
+        if (!plans) return;
+        const container = document.getElementById('billing-plans');
+        const currentTier = window.__currentPlanTier;
+        container.innerHTML = plans.map((plan) => {
+          const price = plan.price_usd_per_month === null
+            ? 'Contact us'
+            : (plan.price_usd_per_month === 0 ? 'Free' : `$${plan.price_usd_per_month}/mo`);
+          const isCurrent = plan.tier === currentTier;
+          const features = plan.features.map((f) => `<li>${f}</li>`).join('');
+          return `
+            <div class="plan-card ${isCurrent ? 'current' : ''}">
+              <h4>${plan.name}</h4>
+              <div class="price">${price}</div>
+              <ul>${features}</ul>
+              <button ${isCurrent ? 'disabled' : ''} onclick="subscribeToPlan('${plan.tier}')">
+                ${isCurrent ? 'Current plan' : 'Subscribe'}
+              </button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      async function subscribeToPlan(tier) {
+        try {
+          const response = await fetch('/billing/subscribe', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ plan: tier })
+          });
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            alert(error.detail || 'Failed to change plan.');
+            return;
+          }
+          const body = await response.json();
+          if (body.checkout_url) {
+            // Real payment collection (e.g. Stripe) is pending completion — the
+            // plan isn't active yet, redirect to the hosted checkout page.
+            window.location.href = body.checkout_url;
+            return;
+          }
+          await loadBillingUsage();
+        } catch (err) {
+          alert('Failed to change plan.');
+        }
+      }
+
       function showTab(tabName) {
         document.querySelectorAll('.tab-btn').forEach((btn) => {
           btn.classList.toggle('active', btn.dataset.tab === tabName);
@@ -200,11 +547,15 @@
       }
 
       async function createAssessment() {
+        if (!authToken) {
+          alert('Sign in or create an account first.');
+          return;
+        }
         const name = document.getElementById('assessment-name').value || 'New assessment';
         const description = document.getElementById('assessment-description').value || '';
         const response = await fetch('/assessments', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ name, description })
         });
         const assessment = await response.json();
@@ -215,6 +566,10 @@
       }
 
       async function runScan() {
+        if (!authToken) {
+          alert('Sign in or create an account first.');
+          return;
+        }
         if (!currentAssessmentId) {
           alert('Create an assessment first');
           return;
@@ -222,12 +577,13 @@
         const agentType = document.getElementById('agent-type').value;
         const repositoryId = document.getElementById('scan-repository').value;
         const target = document.getElementById('scan-target').value;
+        const targetAuthorizationConfirmed = document.getElementById('scan-authorized').checked;
         const payload = repositoryId
-          ? { agent_type: agentType, repository_id: repositoryId }
-          : { agent_type: agentType, target };
+          ? { agent_type: agentType, repository_id: repositoryId, target_authorization_confirmed: targetAuthorizationConfirmed }
+          : { agent_type: agentType, target, target_authorization_confirmed: targetAuthorizationConfirmed };
         const response = await fetch(`/assessments/${currentAssessmentId}/scan-jobs`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload)
         });
         if (!response.ok) {
@@ -242,6 +598,10 @@
       }
 
       async function ingestRepository() {
+        if (!authToken) {
+          alert('Sign in or create an account first.');
+          return;
+        }
         if (!currentAssessmentId) {
           alert('Create an assessment first');
           return;
@@ -255,7 +615,7 @@
         }
         const response = await fetch(`/assessments/${currentAssessmentId}/repositories`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ name, url, branch })
         });
         if (!response.ok) {
@@ -276,7 +636,7 @@
           if (currentAssessmentId !== assessmentId) {
             return;
           }
-          const response = await fetch(`/assessments/${assessmentId}/repositories/${repositoryId}`);
+          const response = await fetch(`/assessments/${assessmentId}/repositories/${repositoryId}`, { headers: authHeaders() });
           if (!response.ok) {
             return;
           }
@@ -296,7 +656,7 @@
           populateRepositorySelect([]);
           return;
         }
-        const response = await fetch(`/assessments/${assessmentId}/repositories`);
+        const response = await fetch(`/assessments/${assessmentId}/repositories`, { headers: authHeaders() });
         const repositories = await response.json();
         if (!repositories.length) {
           container.innerHTML = '<p class="muted">No repositories ingested yet.</p>';
@@ -325,9 +685,17 @@
       }
 
       async function renderAssessments() {
-        const response = await fetch('/assessments');
-        const assessments = await response.json();
         const container = document.getElementById('assessment-list');
+        if (!authToken) {
+          container.innerHTML = '<p class="muted">Sign in or create an account to see your assessments.</p>';
+          return;
+        }
+        const response = await fetch('/assessments', { headers: authHeaders() });
+        const assessments = await response.json();
+        if (!response.ok) {
+          container.innerHTML = '<p class="muted">Sign in to view your assessments.</p>';
+          return;
+        }
         if (!assessments.length) {
           container.innerHTML = '<p class="muted">No assessments yet. Create one above.</p>';
           return;
@@ -355,7 +723,7 @@
           document.getElementById('report').innerHTML = '<p>Select an assessment to view the report.</p>';
           return;
         }
-        const response = await fetch(`/assessments/${currentAssessmentId}/report`);
+        const response = await fetch(`/assessments/${currentAssessmentId}/report`, { headers: authHeaders() });
         const report = await response.json();
 
         document.getElementById('current-assessment-name').textContent = report.name;
@@ -369,7 +737,167 @@
         `;
       }
 
+      function openAuditLogModal() {
+        document.getElementById('audit-modal').style.display = 'flex';
+        loadAuditLog();
+      }
+
+      function closeAuditLogModal() {
+        document.getElementById('audit-modal').style.display = 'none';
+      }
+
+      async function loadAuditLog() {
+        const container = document.getElementById('audit-log-content');
+        if (!authToken) {
+          container.innerHTML = '<p class="muted">Sign in to view your organization\'s consent audit log.</p>';
+          return;
+        }
+        try {
+          const response = await fetch('/audit/consent-log', { headers: authHeaders() });
+          if (!response.ok) throw new Error('Failed to load audit log');
+          const entries = await response.json();
+          if (!entries.length) {
+            container.innerHTML = '<p class="muted">No authorized-scan confirmations recorded yet.</p>';
+            return;
+          }
+          container.innerHTML = `
+            <table class="audit-table">
+              <thead>
+                <tr><th>Confirmed by</th><th>Agent</th><th>Target</th><th>Confirmed at</th></tr>
+              </thead>
+              <tbody>
+                ${entries.map((entry) => `
+                  <tr>
+                    <td>${entry.confirmed_by}</td>
+                    <td>${entry.agent_type}</td>
+                    <td>${entry.target}</td>
+                    <td>${new Date(entry.confirmed_at).toLocaleString()}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        } catch (err) {
+          container.innerHTML = '<p class="muted">Could not load the audit log.</p>';
+        }
+      }
+
+      function openTeamModal() {
+        document.getElementById('team-modal').style.display = 'flex';
+        loadTeamMembers();
+      }
+
+      function closeTeamModal() {
+        document.getElementById('team-modal').style.display = 'none';
+      }
+
+      function showTeamError(message) {
+        const el = document.getElementById('team-error');
+        el.textContent = message;
+        el.style.display = message ? 'block' : 'none';
+      }
+
+      async function loadTeamMembers() {
+        const container = document.getElementById('team-members-content');
+        const inviteForm = document.getElementById('team-invite-form');
+        showTeamError('');
+
+        if (!authToken || !currentUser) {
+          container.innerHTML = '<p class="muted">Sign in to manage your team.</p>';
+          inviteForm.style.display = 'none';
+          return;
+        }
+
+        const isOwnerOrAdmin = currentUser.role === 'owner' || currentUser.role === 'admin';
+        inviteForm.style.display = isOwnerOrAdmin ? 'block' : 'none';
+
+        try {
+          const response = await fetch('/team/members', { headers: authHeaders() });
+          if (!response.ok) throw new Error('Failed to load team members');
+          const members = await response.json();
+
+          container.innerHTML = `
+            <table class="audit-table">
+              <thead>
+                <tr><th>Email</th><th>Role</th><th>Joined</th><th></th></tr>
+              </thead>
+              <tbody>
+                ${members.map((member) => `
+                  <tr>
+                    <td>${member.email}</td>
+                    <td>${member.role}</td>
+                    <td>${new Date(member.created_at).toLocaleDateString()}</td>
+                    <td>
+                      ${currentUser.role === 'owner' && member.id !== currentUser.id ? `
+                        <select onchange="changeTeamMemberRole('${member.id}', this.value)" style="width:auto; margin-top:0; display:inline-block;">
+                          <option value="member" ${member.role === 'member' ? 'selected' : ''}>Member</option>
+                          <option value="admin" ${member.role === 'admin' ? 'selected' : ''}>Admin</option>
+                          <option value="owner" ${member.role === 'owner' ? 'selected' : ''}>Owner</option>
+                        </select>
+                        <button class="secondary" style="width:auto; display:inline-block; margin-left:6px;" onclick="removeTeamMember('${member.id}')">Remove</button>
+                      ` : ''}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        } catch (err) {
+          container.innerHTML = '<p class="muted">Could not load team members.</p>';
+        }
+      }
+
+      async function inviteTeamMember() {
+        const email = document.getElementById('team-invite-email').value;
+        const role = document.getElementById('team-invite-role').value;
+        showTeamError('');
+
+        const response = await fetch('/team/invite', {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ email, role })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showTeamError(body.detail || 'Failed to invite teammate.');
+          return;
+        }
+        document.getElementById('team-invite-email').value = '';
+        await loadTeamMembers();
+      }
+
+      async function changeTeamMemberRole(userId, role) {
+        showTeamError('');
+        const response = await fetch(`/team/members/${userId}/role`, {
+          method: 'PATCH',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ role })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showTeamError(body.detail || 'Failed to change role.');
+        }
+        await loadTeamMembers();
+      }
+
+      async function removeTeamMember(userId) {
+        if (!confirm('Remove this teammate from the organization?')) {
+          return;
+        }
+        showTeamError('');
+        const response = await fetch(`/team/members/${userId}`, {
+          method: 'DELETE',
+          headers: authHeaders()
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          showTeamError(body.detail || 'Failed to remove teammate.');
+        }
+        await loadTeamMembers();
+      }
+
       renderAssessments();
     </script>
   </body>
 </html>
+

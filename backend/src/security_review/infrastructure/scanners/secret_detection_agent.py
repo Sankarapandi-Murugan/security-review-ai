@@ -12,7 +12,7 @@ class SecretDetectionAgent(Agent):
     
     agent_type = AgentType.SECRET_DETECTION
 
-    def execute(self, target: str | None) -> list[Finding]:
+    def execute(self, target: str | None, *, authorized: bool = False) -> list[Finding]:
         """Scan for exposed secrets and credentials."""
         findings = []
         

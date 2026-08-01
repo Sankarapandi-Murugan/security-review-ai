@@ -10,7 +10,7 @@ class CloudSecurityAgent(Agent):
     
     agent_type = AgentType.CLOUD_SECURITY
 
-    def execute(self, target: str | None) -> list[Finding]:
+    def execute(self, target: str | None, *, authorized: bool = False) -> list[Finding]:
         """Assess cloud configuration files for security issues."""
         findings = []
         

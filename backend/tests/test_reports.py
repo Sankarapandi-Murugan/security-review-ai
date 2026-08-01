@@ -1,14 +1,17 @@
 from fastapi.testclient import TestClient
 
 from security_review.main import app
+from tests._auth_helpers import signup_headers
 
 
 def test_assessment_report_includes_summary_metrics() -> None:
     client = TestClient(app)
+    headers = signup_headers(client)
 
     assessment_response = client.post(
         "/assessments",
         json={"name": "Executive report", "description": "Test report generation"},
+        headers=headers,
     )
     assert assessment_response.status_code == 201
     assessment_id = assessment_response.json()["id"]
@@ -16,10 +19,11 @@ def test_assessment_report_includes_summary_metrics() -> None:
     scan_response = client.post(
         f"/assessments/{assessment_id}/scan-jobs",
         json={"agent_type": "dependency_security", "target": "requirements.txt"},
+        headers=headers,
     )
     assert scan_response.status_code == 201
 
-    report_response = client.get(f"/assessments/{assessment_id}/report")
+    report_response = client.get(f"/assessments/{assessment_id}/report", headers=headers)
     assert report_response.status_code == 200
     report = report_response.json()
     assert report["assessment_id"] == assessment_id

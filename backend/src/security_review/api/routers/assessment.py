@@ -5,9 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from starlette.responses import StreamingResponse
 
-from security_review.api.dependencies import get_current_organization_id
+from security_review.api.dependencies import get_current_organization_id, get_current_user, require_roles
 from security_review.application.assessment_service import AssessmentService
-from security_review.domain.assessment.exceptions import RepositoryNotReadyError
+from security_review.domain.assessment.exceptions import PlanLimitExceededError, RepositoryNotReadyError
 from security_review.domain.assessment.models import (
     AgentType,
     AssessmentCreateRequest,
@@ -20,6 +20,7 @@ from security_review.domain.assessment.models import (
     ScanStatus,
     TrivyScanRequest,
 )
+from security_review.domain.auth.models import UserRole
 
 router = APIRouter(tags=["Assessments"])
 service = AssessmentService()
@@ -34,7 +35,10 @@ def create_assessment(
     payload: AssessmentCreateRequest,
     organization_id: UUID = Depends(get_current_organization_id),
 ) -> AssessmentResponse:
-    return service.create_assessment(payload, organization_id)
+    try:
+        return service.create_assessment(payload, organization_id)
+    except PlanLimitExceededError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
 
 
 @router.get("/assessments/{assessment_id}", response_model=AssessmentResponse)
@@ -60,7 +64,9 @@ def list_assessments(
 
 @router.delete("/assessments/{assessment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_assessment(
-    assessment_id: UUID, organization_id: UUID = Depends(get_current_organization_id)
+    assessment_id: UUID,
+    organization_id: UUID = Depends(get_current_organization_id),
+    _current_user=Depends(require_roles(UserRole.OWNER, UserRole.ADMIN)),
 ) -> None:
     try:
         service.delete_assessment(assessment_id, organization_id)
@@ -123,6 +129,7 @@ def delete_repository(
     assessment_id: UUID,
     repository_id: UUID,
     organization_id: UUID = Depends(get_current_organization_id),
+    _current_user=Depends(require_roles(UserRole.OWNER, UserRole.ADMIN)),
 ) -> None:
     try:
         service.delete_repository(assessment_id, repository_id, organization_id)
@@ -140,15 +147,20 @@ def create_scan_job(
     payload: ScanJobCreateRequest,
     background_tasks: BackgroundTasks,
     organization_id: UUID = Depends(get_current_organization_id),
+    current_user=Depends(get_current_user),
 ) -> ScanJob:
     try:
-        scan_job = service.create_scan_job(assessment_id, payload, organization_id)
+        scan_job = service.create_scan_job(
+            assessment_id, payload, organization_id, confirmed_by=current_user.email
+        )
         background_tasks.add_task(service.execute_scan_job, assessment_id, scan_job.id)
         return scan_job
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found") from exc
     except RepositoryNotReadyError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except PlanLimitExceededError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
 
 
 @router.get(

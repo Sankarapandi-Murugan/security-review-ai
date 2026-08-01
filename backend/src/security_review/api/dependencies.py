@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
 from security_review.application.auth_service import AuthService, InvalidTokenError
-from security_review.domain.auth.models import NIL_ORGANIZATION_ID, User
+from security_review.domain.auth.models import User, UserRole
 
 _auth_service = AuthService()
 
@@ -49,12 +50,28 @@ def get_current_user(authorization: str | None = Header(default=None)) -> User:
         ) from exc
 
 
-def get_current_organization_id(authorization: str | None = Header(default=None)) -> UUID:
-    """Resolve the organization id for the request.
-
-    Returns the authenticated user's organization when a valid bearer token is present,
-    otherwise falls back to a fixed "legacy" organization id so unauthenticated/demo usage
-    keeps working exactly as before multi-tenancy was introduced.
+def get_current_organization_id(current_user: User = Depends(get_current_user)) -> UUID:
+    """Resolve the organization id for the request. Requires a valid bearer token —
+    there is no anonymous/legacy fallback; all assessment, billing, and audit endpoints
+    require signing up or logging in first.
     """
-    user = get_optional_current_user(authorization)
-    return user.organization_id if user else NIL_ORGANIZATION_ID
+    return current_user.organization_id
+
+
+def require_roles(*allowed_roles: UserRole) -> Callable[[User], User]:
+    """Build a FastAPI dependency that requires the current user's role to be one of
+    ``allowed_roles``, raising 403 otherwise. Use for role-gated actions (billing
+    changes, team management, destructive operations) — most endpoints should
+    remain open to any authenticated org member via ``get_current_user``.
+    """
+
+    def _dependency(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in allowed_roles:
+            allowed = ", ".join(role.value for role in allowed_roles)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This action requires one of the following roles: {allowed}.",
+            )
+        return current_user
+
+    return _dependency

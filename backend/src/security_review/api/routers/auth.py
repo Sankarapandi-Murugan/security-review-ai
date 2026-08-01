@@ -1,10 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from security_review.api.dependencies import get_current_user
-from security_review.api.rate_limiter import enforce_login_rate_limit, enforce_signup_rate_limit
-from security_review.application.auth_service import AuthService, InvalidCredentialsError
+from security_review.api.rate_limiter import (
+    enforce_forgot_password_rate_limit,
+    enforce_login_rate_limit,
+    enforce_signup_rate_limit,
+)
+from security_review.application.auth_service import (
+    AuthService,
+    InvalidCredentialsError,
+    InvalidResetTokenError,
+)
 from security_review.domain.auth.models import (
+    ForgotPasswordRequest,
     LoginRequest,
+    ResetPasswordRequest,
     SignupRequest,
     TokenResponse,
     User,
@@ -45,3 +55,22 @@ def get_me(current_user: User = Depends(get_current_user)) -> UserResponse:
         role=current_user.role,
         created_at=current_user.created_at,
     )
+
+
+@router.post("/forgot-password", dependencies=[Depends(enforce_forgot_password_rate_limit)])
+def forgot_password(payload: ForgotPasswordRequest, request: Request) -> dict:
+    base_url = str(request.base_url).rstrip("/")
+    service.request_password_reset(payload, base_url)
+    # Always the same response, regardless of whether the email is registered,
+    # to avoid leaking which emails have accounts (user enumeration).
+    return {"detail": "If an account with that email exists, a password reset link has been sent."}
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest) -> dict:
+    try:
+        service.reset_password(payload)
+    except InvalidResetTokenError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"detail": "Password has been reset. You can now log in."}
+

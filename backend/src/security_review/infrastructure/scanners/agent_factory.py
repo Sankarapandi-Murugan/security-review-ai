@@ -1,5 +1,6 @@
 from security_review.domain.assessment.models import AgentType
 from security_review.infrastructure.scanners.api_security_agent import ApiSecurityAgent
+from security_review.infrastructure.scanners.auto_remediation_agent import AutoRemediationAgent
 from security_review.infrastructure.scanners.blue_team_agent import BlueTeamAgent
 from security_review.infrastructure.scanners.black_box_agent import BlackBoxAgent
 from security_review.infrastructure.scanners.cloud_security_agent import CloudSecurityAgent
@@ -31,6 +32,8 @@ class AgentFactory:
             return BlueTeamAgent()
         if agent_type == AgentType.SECRET_DETECTION:
             return SecretDetectionAgent()
+        if agent_type == AgentType.AUTO_REMEDIATION:
+            return AutoRemediationAgent()
 
         # Default fallback uses white-box-style findings for unsupported agent types.
         return WhiteBoxAgent()
