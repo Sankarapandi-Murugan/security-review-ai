@@ -1,11 +1,9 @@
 import pytest
 
 from security_review.domain.finding import (
-    Confidence,
     Finding,
     FindingStatus,
     Location,
-    Severity,
 )
 from security_review.domain.finding.exceptions import (
     InvalidFindingStateError,

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Security Review AI Dashboard</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body { background: #07111f; color: #f3f8ff; }
+      .app { display: flex; height: 100vh; overflow: hidden; }
+
+      .sidebar { width: 300px; flex-shrink: 0; background: rgba(255,255,255,0.04); border-right: 1px solid rgba(255,255,255,0.12); display: flex; flex-direction: column; padding: 16px; overflow-y: auto; }
+      .sidebar h1 { font-size: 17px; margin: 0 0 2px; }
+      .sidebar .subtitle { font-size: 12px; opacity: 0.6; margin: 0 0 14px; }
+
+      .new-assessment-form { display: none; margin-top: 10px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 10px; }
+      .new-assessment-form.open { display: block; }
+
+      .assessment-list { flex: 1; overflow-y: auto; margin-top: 14px; }
+      .assessment-item { padding: 10px 12px; border-radius: 10px; cursor: pointer; margin-bottom: 6px; border: 1px solid transparent; }
+      .assessment-item:hover { background: rgba(255,255,255,0.06); }
+      .assessment-item.active { background: rgba(36,162,255,0.15); border-color: #24a2ff; }
+      .assessment-item .name { font-weight: 600; font-size: 14px; }
+      .assessment-item .meta { font-size: 12px; opacity: 0.65; margin-top: 3px; }
+
+      .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+      .main-header { padding: 20px 28px 0; }
+      .main-header h2 { margin: 0 0 6px; font-size: 20px; }
+      .tabs { display: flex; gap: 4px; padding: 14px 28px 0; border-bottom: 1px solid rgba(255,255,255,0.12); }
+      .tab-btn { background: none; border: none; color: #b7c9de; padding: 10px 16px; cursor: pointer; font-weight: 600; font-size: 14px; border-bottom: 2px solid transparent; width: auto; margin: 0; border-radius: 0; }
+      .tab-btn.active { color: #fff; border-bottom-color: #24a2ff; }
+      .tab-content { flex: 1; overflow-y: auto; }
+      .tab-panel { display: none; padding: 20px 28px; }
+      .tab-panel.active { display: block; }
+
+      .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; padding: 28px; opacity: 0.6; text-align: center; }
+
+      .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 20px; margin-bottom: 18px; }
+      input, select, button { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #2c4d76; margin-top: 8px; background: rgba(255,255,255,0.03); color: inherit; font: inherit; }
+      button { cursor: pointer; background: #24a2ff; color: white; border: none; font-weight: 600; }
+      button.secondary { background: rgba(255,255,255,0.1); }
+      .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #17395c; margin-right: 8px; margin-top: 8px; font-size: 12px; }
+      .pill.pending { background: #5c4a17; }
+      .pill.running { background: #17475c; }
+      .pill.completed { background: #1c5c2a; }
+      .pill.failed { background: #5c1717; }
+      .pill.cloning { background: #17475c; }
+      .pill.ready { background: #1c5c2a; }
+      .repo-row { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; margin-top: 10px; font-size: 14px; }
+      .repo-row .error { color: #ff8a8a; }
+      .muted { opacity: 0.7; font-size: 13px; }
+      pre { white-space: pre-wrap; word-break: break-word; }
+      .progress-track { width: 100%; height: 10px; border-radius: 999px; background: rgba(255,255,255,0.12); margin-top: 10px; overflow: hidden; }
+      .progress-bar { height: 100%; width: 0%; background: #24a2ff; transition: width 0.4s ease; }
+      .progress-bar.completed { background: #2ecc71; width: 100% !important; }
+      .progress-bar.failed { background: #e74c3c; width: 100% !important; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <h1>Security Review AI</h1>
+        <p class="subtitle">Assessments</p>
+        <button id="new-assessment-toggle" class="secondary" onclick="toggleNewAssessmentForm()">+ New assessment</button>
+        <div class="new-assessment-form" id="new-assessment-form">
+          <input id="assessment-name" placeholder="Assessment name" />
+          <input id="assessment-description" placeholder="Description (optional)" />
+          <button onclick="createAssessment()">Create</button>
+        </div>
+        <div class="assessment-list" id="assessment-list"></div>
+      </aside>
+
+      <main class="main">
+        <div class="main-header">
+          <h2 id="current-assessment-name">Select an assessment</h2>
+          <div id="current-assessment-status"></div>
+        </div>
+
+        <div class="tabs" id="tabs" style="display:none;">
+          <button class="tab-btn active" data-tab="repositories" onclick="showTab('repositories')">Repositories</button>
+          <button class="tab-btn" data-tab="scan" onclick="showTab('scan')">Run scan</button>
+          <button class="tab-btn" data-tab="report" onclick="showTab('report')">Report</button>
+        </div>
+
+        <div class="tab-content" id="tab-content" style="display:none;">
+          <div class="tab-panel active" id="panel-repositories">
+            <div class="card">
+              <h3>Ingest repository</h3>
+              <p class="muted">Clones a real remote git repository so scanners run against actual source code.</p>
+              <input id="repo-name" placeholder="Repository name (e.g. my-app)" />
+              <input id="repo-url" placeholder="https://github.com/org/my-app" />
+              <input id="repo-branch" placeholder="Branch (default: main)" />
+              <button onclick="ingestRepository()">Ingest repository</button>
+            </div>
+            <div class="card">
+              <h3>Ingested repositories</h3>
+              <div id="repositories"></div>
+            </div>
+          </div>
+
+          <div class="tab-panel" id="panel-scan">
+            <div class="card">
+              <h3>Run scan</h3>
+              <select id="agent-type">
+                <option value="white_box">White Box</option>
+                <option value="api_security">API Security</option>
+                <option value="cloud_security">Cloud Security</option>
+                <option value="dependency_security">Dependency Security</option>
+                <option value="red_team">Red Team</option>
+                <option value="black_box">Black Box</option>
+                <option value="blue_team">Blue Team</option>
+                <option value="secret_detection">Secret Detection</option>
+                <option value="trivy">Trivy (Container/FS)</option>
+              </select>
+              <select id="scan-repository">
+                <option value="">Manual target (below)</option>
+              </select>
+              <input id="scan-target" placeholder="Target (e.g. requirements.txt)" />
+              <button onclick="runScan()">Launch scan</button>
+
+              <div id="scan-status" style="display:none; margin-top: 16px;">
+                <div><strong id="scan-status-label">Pending</strong> <span id="scan-status-agent"></span></div>
+                <div class="progress-track"><div id="scan-progress-bar" class="progress-bar"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-panel" id="panel-report">
+            <div class="card">
+              <h3>Report</h3>
+              <div id="report"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-state" id="empty-state">
+          <p>Select an assessment from the sidebar, or create a new one, to get started.</p>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      let currentAssessmentId = null;
+      let activeScanStream = null;
+
+      const PROGRESS_BY_STATUS = { pending: 15, running: 60, completed: 100, failed: 100 };
+
+      function updateScanStatusUI(scanJob) {
+        const container = document.getElementById('scan-status');
+        const label = document.getElementById('scan-status-label');
+        const agent = document.getElementById('scan-status-agent');
+        const bar = document.getElementById('scan-progress-bar');
+
+        container.style.display = 'block';
+        label.textContent = scanJob.status.charAt(0).toUpperCase() + scanJob.status.slice(1);
+        agent.textContent = `(${scanJob.agent_type})`;
+        bar.className = `progress-bar ${scanJob.status}`;
+        bar.style.width = `${PROGRESS_BY_STATUS[scanJob.status] || 0}%`;
+      }
+
+      function streamScanStatus(assessmentId, scanJobId) {
+        if (activeScanStream) {
+          activeScanStream.close();
+        }
+
+        const source = new EventSource(`/assessments/${assessmentId}/scan-jobs/${scanJobId}/stream`);
+        activeScanStream = source;
+
+        source.onmessage = (event) => {
+          const scanJob = JSON.parse(event.data);
+          updateScanStatusUI(scanJob);
+
+          if (scanJob.status === 'completed' || scanJob.status === 'failed') {
+            source.close();
+            activeScanStream = null;
+            renderAssessments();
+            renderReport();
+          }
+        };
+
+        source.onerror = () => {
+          source.close();
+          activeScanStream = null;
+        };
+      }
+
+      function toggleNewAssessmentForm() {
+        document.getElementById('new-assessment-form').classList.toggle('open');
+      }
+
+      function showTab(tabName) {
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.tab === tabName);
+        });
+        document.querySelectorAll('.tab-panel').forEach((panel) => {
+          panel.classList.toggle('active', panel.id === `panel-${tabName}`);
+        });
+      }
+
+      async function createAssessment() {
+        const name = document.getElementById('assessment-name').value || 'New assessment';
+        const description = document.getElementById('assessment-description').value || '';
+        const response = await fetch('/assessments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description })
+        });
+        const assessment = await response.json();
+        document.getElementById('assessment-name').value = '';
+        document.getElementById('assessment-description').value = '';
+        document.getElementById('new-assessment-form').classList.remove('open');
+        await selectAssessment(assessment.id);
+      }
+
+      async function runScan() {
+        if (!currentAssessmentId) {
+          alert('Create an assessment first');
+          return;
+        }
+        const agentType = document.getElementById('agent-type').value;
+        const repositoryId = document.getElementById('scan-repository').value;
+        const target = document.getElementById('scan-target').value;
+        const payload = repositoryId
+          ? { agent_type: agentType, repository_id: repositoryId }
+          : { agent_type: agentType, target };
+        const response = await fetch(`/assessments/${currentAssessmentId}/scan-jobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          alert(error.detail || 'Failed to launch scan.');
+          return;
+        }
+        const scanJob = await response.json();
+        updateScanStatusUI(scanJob);
+        streamScanStatus(currentAssessmentId, scanJob.id);
+        renderAssessments();
+      }
+
+      async function ingestRepository() {
+        if (!currentAssessmentId) {
+          alert('Create an assessment first');
+          return;
+        }
+        const name = document.getElementById('repo-name').value || 'repository';
+        const url = document.getElementById('repo-url').value;
+        const branch = document.getElementById('repo-branch').value || 'main';
+        if (!url) {
+          alert('Enter a repository URL (https://...)');
+          return;
+        }
+        const response = await fetch(`/assessments/${currentAssessmentId}/repositories`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, url, branch })
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          alert(error.detail || 'Failed to ingest repository.');
+          return;
+        }
+        const repository = await response.json();
+        document.getElementById('repo-name').value = '';
+        document.getElementById('repo-url').value = '';
+        document.getElementById('repo-branch').value = '';
+        renderRepositories(currentAssessmentId);
+        pollRepositoryStatus(currentAssessmentId, repository.id);
+      }
+
+      function pollRepositoryStatus(assessmentId, repositoryId) {
+        const poll = async () => {
+          if (currentAssessmentId !== assessmentId) {
+            return;
+          }
+          const response = await fetch(`/assessments/${assessmentId}/repositories/${repositoryId}`);
+          if (!response.ok) {
+            return;
+          }
+          const repository = await response.json();
+          renderRepositories(assessmentId);
+          if (repository.status === 'pending' || repository.status === 'cloning') {
+            setTimeout(poll, 1500);
+          }
+        };
+        setTimeout(poll, 1500);
+      }
+
+      async function renderRepositories(assessmentId) {
+        const container = document.getElementById('repositories');
+        if (!assessmentId) {
+          container.innerHTML = '<p class="muted">Select an assessment to manage repositories.</p>';
+          populateRepositorySelect([]);
+          return;
+        }
+        const response = await fetch(`/assessments/${assessmentId}/repositories`);
+        const repositories = await response.json();
+        if (!repositories.length) {
+          container.innerHTML = '<p class="muted">No repositories ingested yet.</p>';
+        } else {
+          container.innerHTML = repositories.map((repo) => `
+            <div class="repo-row">
+              <strong>${repo.name}</strong> <span class="pill ${repo.status}">${repo.status}</span>
+              <div class="muted">${repo.url} (${repo.branch})</div>
+              ${repo.commit_hash ? `<div class="muted">commit ${repo.commit_hash.slice(0, 10)}</div>` : ''}
+              ${repo.error_message ? `<div class="error">${repo.error_message}</div>` : ''}
+            </div>
+          `).join('');
+        }
+        populateRepositorySelect(repositories.filter((repo) => repo.status === 'ready'));
+      }
+
+      function populateRepositorySelect(readyRepositories) {
+        const select = document.getElementById('scan-repository');
+        const previousValue = select.value;
+        select.innerHTML = '<option value="">Manual target (below)</option>' + readyRepositories.map(
+          (repo) => `<option value="${repo.id}">${repo.name} (${repo.branch})</option>`
+        ).join('');
+        if (readyRepositories.some((repo) => repo.id === previousValue)) {
+          select.value = previousValue;
+        }
+      }
+
+      async function renderAssessments() {
+        const response = await fetch('/assessments');
+        const assessments = await response.json();
+        const container = document.getElementById('assessment-list');
+        if (!assessments.length) {
+          container.innerHTML = '<p class="muted">No assessments yet. Create one above.</p>';
+          return;
+        }
+        container.innerHTML = assessments.map((assessment) => `
+          <div class="assessment-item ${assessment.id === currentAssessmentId ? 'active' : ''}" onclick="selectAssessment('${assessment.id}')">
+            <div class="name">${assessment.name}</div>
+            <div class="meta"><span class="pill ${assessment.status}">${assessment.status}</span> ${assessment.findings.length} findings</div>
+          </div>
+        `).join('');
+      }
+
+      async function selectAssessment(assessmentId) {
+        currentAssessmentId = assessmentId;
+        document.getElementById('tabs').style.display = 'flex';
+        document.getElementById('tab-content').style.display = 'block';
+        document.getElementById('empty-state').style.display = 'none';
+        await renderAssessments();
+        await renderReport();
+        await renderRepositories(currentAssessmentId);
+      }
+
+      async function renderReport() {
+        if (!currentAssessmentId) {
+          document.getElementById('report').innerHTML = '<p>Select an assessment to view the report.</p>';
+          return;
+        }
+        const response = await fetch(`/assessments/${currentAssessmentId}/report`);
+        const report = await response.json();
+
+        document.getElementById('current-assessment-name').textContent = report.name;
+        document.getElementById('current-assessment-status').innerHTML = `<span class="pill ${report.status}">${report.status}</span>`;
+
+        document.getElementById('report').innerHTML = `
+          <div>Findings: ${report.finding_count}</div>
+          <div>Critical: ${report.severity_counts.critical} | High: ${report.severity_counts.high} | Medium: ${report.severity_counts.medium} | Low: ${report.severity_counts.low}</div>
+          <div>Agents: ${Object.entries(report.agent_breakdown).map(([k,v]) => `${k}: ${v}`).join(', ') || 'none'}</div>
+          <div>${report.recommendations.length ? report.recommendations.slice(0, 3).map((item) => `<div>${item}</div>`).join('') : '<p>No recommendations yet.</p>'}</div>
+        `;
+      }
+
+      renderAssessments();
+    </script>
+  </body>
+</html>

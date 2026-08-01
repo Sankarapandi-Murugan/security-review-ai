@@ -1,7 +1,6 @@
 import pytest
 
 from security_review.domain.repository import (
-    BuildSystem,
     Language,
     Repository,
     RepositoryStatus,

@@ -5,9 +5,15 @@ description = "AI Security Review Backend"
 requires-python = ">=3.12"
 
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic>=2",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic[email]>=2",
+    "httpx>=0.27",
+    "bandit>=1.8.0",
+    "safety>=3.0.0",
+    "pip-audit>=2.6.0",
+    "detect-secrets>=1.4.0",
+    "pyjwt>=2.9.0",
 ]
 
 [dependency-groups]
