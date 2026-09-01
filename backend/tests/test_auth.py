@@ -44,6 +44,56 @@ def test_signup_rejects_duplicate_email() -> None:
     assert second.status_code == 409
 
 
+def test_signup_rejects_blank_organization_name() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/auth/signup",
+        json={"organization_name": "", "email": _unique_email(), "password": "supersecret123"},
+    )
+    assert response.status_code == 422
+
+
+def test_signup_rejects_invalid_email() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/auth/signup",
+        json={"organization_name": "Acme Inc", "email": "not-an-email", "password": "supersecret123"},
+    )
+    assert response.status_code == 422
+
+
+def test_signup_rejects_short_password() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/auth/signup",
+        json={"organization_name": "Acme Inc", "email": _unique_email(), "password": "short"},
+    )
+    assert response.status_code == 422
+
+
+def test_signup_round_trip_allows_me_and_login() -> None:
+    client = TestClient(app)
+    email = _unique_email()
+
+    signup_response = client.post(
+        "/auth/signup",
+        json={"organization_name": "Round Trip Org", "email": email, "password": "supersecret123"},
+    )
+    assert signup_response.status_code == 201
+
+    token = signup_response.json()["access_token"]
+    me_response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_response.status_code == 200
+    assert me_response.json()["email"] == email
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": email, "password": "supersecret123"},
+    )
+    assert login_response.status_code == 200
+    assert login_response.json()["user"]["email"] == email
+
+
 def test_login_succeeds_with_correct_password() -> None:
     client = TestClient(app)
     email = _unique_email()

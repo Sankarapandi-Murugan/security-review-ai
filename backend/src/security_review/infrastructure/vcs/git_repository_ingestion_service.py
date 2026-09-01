@@ -57,9 +57,12 @@ class GitRepositoryIngestionService:
         base_dir: str | Path | None = None,
         timeout_seconds: int | None = None,
     ) -> None:
-        self._base_dir = Path(
-            base_dir or os.getenv("SECURITY_REVIEW_REPO_WORKDIR", "data/repos")
-        )
+        configured = base_dir or os.getenv("SECURITY_REVIEW_REPO_WORKDIR", "data/repos")
+        self._base_dir = Path(configured).expanduser()
+        if not self._base_dir.is_absolute():
+            self._base_dir = (Path.cwd() / self._base_dir).resolve()
+        else:
+            self._base_dir = self._base_dir.resolve()
         self._timeout_seconds = timeout_seconds or int(
             os.getenv("SECURITY_REVIEW_GIT_CLONE_TIMEOUT_SECONDS", "120")
         )
@@ -68,7 +71,7 @@ class GitRepositoryIngestionService:
         _validate_repository_url(url)
         safe_branch = _validate_branch(branch)
 
-        dest = self._base_dir / str(repository_id)
+        dest = (self._base_dir / str(repository_id)).resolve()
         if dest.exists():
             shutil.rmtree(dest, ignore_errors=True)
         dest.parent.mkdir(parents=True, exist_ok=True)

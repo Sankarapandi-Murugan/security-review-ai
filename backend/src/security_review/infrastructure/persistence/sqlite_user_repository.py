@@ -89,7 +89,10 @@ class SqliteUserRepository:
     def get_organization_id_by_stripe_customer_id(self, stripe_customer_id: str) -> UUID | None:
         with self._engine.connect() as conn:
             row = conn.execute(
-                text("SELECT id FROM organizations WHERE stripe_customer_id = :customer_id"),
+                text(
+                    "SELECT id FROM organizations WHERE stripe_customer_id = :customer_id "
+                    "ORDER BY created_at DESC LIMIT 1"
+                ),
                 {"customer_id": stripe_customer_id},
             ).mappings().first()
         return UUID(row["id"]) if row else None
@@ -109,6 +112,15 @@ class SqliteUserRepository:
         stripe_subscription_id: str | None,
     ) -> None:
         with self._engine.begin() as conn:
+            if stripe_customer_id is not None:
+                conn.execute(
+                    text(
+                        "UPDATE organizations SET stripe_customer_id = NULL WHERE "
+                        "stripe_customer_id = :customer_id AND id != :id"
+                    ),
+                    {"customer_id": stripe_customer_id, "id": str(organization_id)},
+                )
+
             conn.execute(
                 text(
                     "UPDATE organizations SET stripe_customer_id = :customer_id, "

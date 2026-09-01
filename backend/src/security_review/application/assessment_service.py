@@ -3,8 +3,10 @@ import hmac
 import json
 import os
 import shutil
+import stat
 from collections import Counter
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 import httpx
@@ -100,7 +102,31 @@ class AssessmentService:
     def _cleanup_repository_clone(repository: Repository) -> None:
         if not repository.local_path:
             return
-        shutil.rmtree(repository.local_path, ignore_errors=True)
+        clone_path = Path(repository.local_path).expanduser()
+        if not clone_path.is_absolute():
+            clone_path = (Path.cwd() / clone_path).resolve()
+        else:
+            clone_path = clone_path.resolve()
+
+        if not clone_path.exists():
+            return
+
+        def _remove_readonly(func: object, path: str, exc_info: object) -> None:  # type: ignore[override]
+            try:
+                os.chmod(path, os.stat(path).st_mode | stat.S_IWRITE)
+                func(path)
+            except (PermissionError, OSError):
+                pass
+
+        for current_root, dirs, files in os.walk(clone_path, topdown=False):
+            for entry in list(dirs) + list(files):
+                full_path = Path(current_root) / entry
+                try:
+                    os.chmod(full_path, os.stat(full_path).st_mode | stat.S_IWRITE)
+                except OSError:
+                    pass
+
+        shutil.rmtree(clone_path, onerror=_remove_readonly)
 
     def ingest_repository(
         self, assessment_id: UUID, payload: RepositoryCreateRequest, organization_id: UUID | None = None

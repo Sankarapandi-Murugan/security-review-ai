@@ -3,12 +3,21 @@
 > **Mission:** Build autonomous AI security engineers that discover, validate, and remediate
 > vulnerabilities faster than human teams.
 
-Vigil AI is a multi-tenant, API-first platform running 9 autonomous security agents (White Box,
-Black Box, Red Team, Blue Team, API Security, Cloud Security, Dependency Security, Secret
-Detection, and Auto-Remediation) that continuously scan applications, APIs, infrastructure, and
-cloud environments — then fix what they safely can and hand the rest to your team with
-reproducible evidence. A marketing/mission landing page is served at `/`; the operator dashboard
+Vigil AI is an AI-powered security review platform designed to help engineering and security
+teams identify, validate, and remediate vulnerabilities across code repositories, APIs, and
+infrastructure faster than manual review workflows. The platform is built as a startup MVP with a
+multi-tenant, API-first foundation and 9 autonomous security agents (White Box, Black Box, Red
+Team, Blue Team, API Security, Cloud Security, Dependency Security, Secret Detection, and
+Auto-Remediation). A marketing/mission landing page is served at `/`; the operator dashboard
 lives at `/ui/`.
+
+## Pilot customer onboarding
+
+We are onboarding a limited set of pilot customers to evaluate Vigil AI in real-world security
+assessment workflows, validate operational fit, and refine the platform based on feedback before
+broader rollout. The pilot focuses on repository assessment, automated security scanning, findings
+validation, and remediation guidance for engineering teams that need faster, repeatable review
+cycles.
 
 ## Run locally
 
@@ -19,6 +28,44 @@ cd backend
 
 Then open `http://localhost:8000/` for the landing page or `http://localhost:8000/ui/` for the
 dashboard.
+
+## Environment and `.env` setup
+
+Create a local environment file in the backend directory (for example `backend/.env`) with the
+minimum values you need for development.
+
+```env
+SECURITY_REVIEW_ENVIRONMENT=development
+SECURITY_REVIEW_LOG_LEVEL=INFO
+SECURITY_REVIEW_AUTH_REQUIRED=false
+SECURITY_REVIEW_JWT_SECRET=change-me-in-dev-only-but-at-least-32-chars
+SECURITY_REVIEW_API_KEY=demo-key
+SECURITY_REVIEW_WEBHOOK_SECRET=dev-webhook-secret
+SECURITY_REVIEW_SENTRY_DSN=
+SECURITY_REVIEW_PAYMENT_PROVIDER=mock
+SECURITY_REVIEW_EMAIL_PROVIDER=console
+DATABASE_URL=sqlite:///./data/security_review.db
+```
+
+Required production settings for force-fail startup validation:
+
+```env
+SECURITY_REVIEW_ENVIRONMENT=production
+SECURITY_REVIEW_JWT_SECRET=<strong-random-32-plus-character-secret>
+SECURITY_REVIEW_AUTH_REQUIRED=true
+SECURITY_REVIEW_API_KEY=<strong-random-api-key>
+SECURITY_REVIEW_WEBHOOK_SECRET=<strong-random-webhook-secret>
+```
+
+If `SECURITY_REVIEW_ENVIRONMENT=production`, the app refuses to start with missing or insecure
+secrets instead of silently running with defaults.
+
+Health endpoints:
+
+- `GET /livez` — liveness: process is alive
+- `GET /readyz` — readiness: app is configured and ready to serve traffic
+- `GET /health` — compatibility endpoint for current monitoring; returns `200 OK` when the app is
+  healthy and `503` when startup validation has failed
 
 ## Plans & billing
 

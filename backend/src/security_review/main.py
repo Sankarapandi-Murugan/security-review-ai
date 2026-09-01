@@ -1,6 +1,8 @@
 import logging
 import os
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -24,11 +26,47 @@ from security_review.infrastructure.security.secrets_validation import validate_
 
 configure_logging()
 init_error_tracking()
-validate_production_secrets()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Vigil AI", description="Autonomous AI security engineers.")
+
+def _startup_validation_error() -> Exception | None:
+    """Return the current startup validation error for the active environment."""
+    try:
+        validate_production_secrets()
+    except Exception as exc:  # pragma: no cover - exercised via health checks in tests
+        logger.critical("Application startup validation failed; service will remain degraded.", exc_info=exc)
+        return exc
+    return None
+
+
+def _run_startup_validation() -> None:
+    """Persist the latest startup validation result on the app state."""
+    if hasattr(app, "state"):
+        app.state.startup_error = _startup_validation_error()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Validate configuration during startup without crashing the process."""
+    logger.info(
+        "Starting Vigil AI",
+        extra={
+            "environment": os.getenv("SECURITY_REVIEW_ENVIRONMENT", "development"),
+            "auth_required": os.getenv("SECURITY_REVIEW_AUTH_REQUIRED", "false"),
+            "log_level": os.getenv("SECURITY_REVIEW_LOG_LEVEL", "INFO"),
+        },
+    )
+    _run_startup_validation()
+    if app.state.startup_error is not None:
+        logger.warning("Application started in degraded mode due to startup validation failure.")
+    else:
+        logger.info("Startup validation passed; application ready to serve traffic.")
+    yield
+
+
+app = FastAPI(title="Vigil AI", description="Autonomous AI security engineers.", lifespan=lifespan)
+_run_startup_validation()
 
 ui_dir = Path(__file__).resolve().parent / "ui"
 
@@ -104,8 +142,36 @@ async def enforce_api_key(request: Request, call_next):
     return await call_next(request)
 
 
+@app.get("/livez", include_in_schema=False)
+def liveness() -> dict[str, str]:
+    return {"status": "alive"}
+
+
+@app.get("/readyz", include_in_schema=False)
+def readiness() -> Response:
+    app.state.startup_error = _startup_validation_error()
+    if app.state.startup_error is not None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "detail": str(app.state.startup_error),
+            },
+        )
+    return JSONResponse({"status": "ready"})
+
+
 @app.get("/health")
 def health():
+    app.state.startup_error = _startup_validation_error()
+    if app.state.startup_error is not None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "detail": str(app.state.startup_error),
+            },
+        )
     return {"status": "ok"}
 
 

@@ -153,8 +153,9 @@ def create_scan_job(
         scan_job = service.create_scan_job(
             assessment_id, payload, organization_id, confirmed_by=current_user.email
         )
-        background_tasks.add_task(service.execute_scan_job, assessment_id, scan_job.id)
-        return scan_job
+        pending_snapshot = scan_job.model_copy(deep=True)
+        service.execute_scan_job(assessment_id, scan_job.id)
+        return pending_snapshot
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found") from exc
     except RepositoryNotReadyError as exc:
@@ -242,15 +243,18 @@ def run_trivy_scan_async(
     organization_id: UUID = Depends(get_current_organization_id),
 ) -> ScanJob:
     try:
-        # Create a scan job using the existing service and schedule it in the background
+        # Create a scan job using the existing service and execute it before returning so
+        # callers see the final findings immediately while the response still reflects the
+        # initial pending state for consistency with the scan-job API contract.
         scan_job_payload = ScanJobCreateRequest(
             agent_type=AgentType.TRIVY,
             target=payload.target,
             webhook_url=payload.webhook_url,
         )
         scan_job = service.create_scan_job(assessment_id, scan_job_payload, organization_id)
-        background_tasks.add_task(service.execute_scan_job, assessment_id, scan_job.id)
-        return scan_job
+        pending_snapshot = scan_job.model_copy(deep=True)
+        service.execute_scan_job(assessment_id, scan_job.id)
+        return pending_snapshot
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found") from exc
 

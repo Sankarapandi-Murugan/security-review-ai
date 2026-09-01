@@ -105,14 +105,15 @@ class AutoRemediationAgent(Agent):
     def _apply_timeout_fixes(self, findings: list[Finding]) -> set[str]:
         patched_files: set[str] = set()
         for finding in findings:
-            if not finding.evidence or ":" not in finding.evidence:
+            evidence = (finding.evidence or "").strip()
+            if not evidence:
                 continue
-            file_path_str, _, _line = finding.evidence.rpartition(":")
-            file_path = Path(file_path_str)
+            resolved = evidence.rsplit(":", 1)[0] if ":" in evidence else evidence
+            file_path = Path(resolved)
             if not file_path.is_file():
                 continue
             if self._patch_file(file_path):
-                patched_files.add(str(file_path))
+                patched_files.add(str(file_path.resolve()))
         return patched_files
 
     @staticmethod
