@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from security_review.api.dependencies import get_current_organization_id, require_roles
 from security_review.application.team_service import LastOwnerError, TeamError, TeamService
@@ -10,6 +10,7 @@ from security_review.domain.auth.models import (
     UserResponse,
     UserRole,
 )
+from security_review.infrastructure.security.public_url import get_public_base_url
 
 router = APIRouter(prefix="/team", tags=["Team"])
 service = TeamService()
@@ -33,13 +34,11 @@ def list_members(organization_id: UUID = Depends(get_current_organization_id)) -
 @router.post("/invite", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def invite_member(
     payload: InviteMemberRequest,
-    request: Request,
     organization_id: UUID = Depends(get_current_organization_id),
     _current_user=Depends(require_roles(UserRole.OWNER, UserRole.ADMIN)),
 ) -> UserResponse:
-    base_url = str(request.base_url).rstrip("/")
     try:
-        user = service.invite_member(organization_id, payload.email, payload.role, base_url)
+        user = service.invite_member(organization_id, payload.email, payload.role, get_public_base_url())
     except TeamError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _to_response(user)

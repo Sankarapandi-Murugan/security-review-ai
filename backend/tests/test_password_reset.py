@@ -151,6 +151,28 @@ def test_reset_password_rejects_unknown_token():
     assert response.status_code == 400
 
 
+def test_password_reset_url_uses_configured_public_url_not_host_header(monkeypatch):
+    monkeypatch.setenv("SECURITY_REVIEW_PUBLIC_BASE_URL", "https://app.vigil.example")
+    client = TestClient(app)
+    _token, email = _signup(client)
+    captured = {}
+    from security_review.infrastructure.email import email_provider as email_provider_module
+
+    def _capture(self, to_email, reset_url):
+        captured["reset_url"] = reset_url
+
+    monkeypatch.setattr(email_provider_module.ConsoleEmailProvider, "send_password_reset_email", _capture)
+
+    response = client.post(
+        "/auth/forgot-password",
+        json={"email": email},
+        headers={"host": "attacker.example"},
+    )
+
+    assert response.status_code == 200
+    assert captured["reset_url"].startswith("https://app.vigil.example/ui/?reset_token=")
+
+
 def test_reset_password_rejects_expired_token(monkeypatch):
     from datetime import timedelta
 

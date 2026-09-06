@@ -9,6 +9,7 @@ silently running with a known-insecure default secret.
 from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit
 
 INSECURE_JWT_SECRET_DEFAULT = "dev-insecure-secret-change-me-in-production-32b"
 INSECURE_API_KEY_DEFAULT = "demo-key"
@@ -66,6 +67,22 @@ def validate_production_secrets() -> None:
         issues.append(
             "SECURITY_REVIEW_WEBHOOK_SECRET is set to a known placeholder value from "
             ".env.example rather than a real secret."
+        )
+
+    public_base_url = os.getenv("SECURITY_REVIEW_PUBLIC_BASE_URL", "")
+    try:
+        parsed_public_url = urlsplit(public_base_url)
+        valid_public_url = (
+            parsed_public_url.scheme == "https"
+            and bool(parsed_public_url.netloc)
+            and not parsed_public_url.username
+            and not parsed_public_url.password
+        )
+    except ValueError:
+        valid_public_url = False
+    if not valid_public_url:
+        issues.append(
+            "SECURITY_REVIEW_PUBLIC_BASE_URL must be a credential-free HTTPS URL in production."
         )
 
     if issues:

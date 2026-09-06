@@ -83,7 +83,7 @@ def test_execute_without_authorization_skips_deep_assessment():
 
     findings = agent.execute("https://127.0.0.1/", authorized=False)
 
-    assert any("authorization" in finding.title.lower() for finding in findings)
+    assert any("network safety" in finding.title.lower() for finding in findings)
 
 
 def test_execute_none_target_returns_empty():

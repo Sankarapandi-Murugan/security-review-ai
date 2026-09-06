@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from security_review.api.dependencies import get_current_user
 from security_review.api.rate_limiter import (
@@ -20,6 +20,7 @@ from security_review.domain.auth.models import (
     User,
     UserResponse,
 )
+from security_review.infrastructure.security.public_url import get_public_base_url
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 service = AuthService()
@@ -58,9 +59,8 @@ def get_me(current_user: User = Depends(get_current_user)) -> UserResponse:
 
 
 @router.post("/forgot-password", dependencies=[Depends(enforce_forgot_password_rate_limit)])
-def forgot_password(payload: ForgotPasswordRequest, request: Request) -> dict:
-    base_url = str(request.base_url).rstrip("/")
-    service.request_password_reset(payload, base_url)
+def forgot_password(payload: ForgotPasswordRequest) -> dict:
+    service.request_password_reset(payload, get_public_base_url())
     # Always the same response, regardless of whether the email is registered,
     # to avoid leaking which emails have accounts (user enumeration).
     return {"detail": "If an account with that email exists, a password reset link has been sent."}

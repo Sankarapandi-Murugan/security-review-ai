@@ -6,6 +6,10 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 from security_review.core.agent import Agent
 from security_review.domain.assessment.models import AgentType, Finding, FindingSeverity
+from security_review.infrastructure.security.outbound_url_validation import (
+    UnsafeOutboundUrlError,
+    validate_public_http_url,
+)
 
 if TYPE_CHECKING:
     import httpx
@@ -57,7 +61,19 @@ class BlackBoxAgent(Agent):
         if not target:
             return findings
 
-        is_url = target.startswith("http://") or target.startswith("https://")
+        is_url = target.startswith(("http://", "https://"))
+        try:
+            validate_public_http_url(target if is_url else f"https://{target}")
+        except UnsafeOutboundUrlError as exc:
+            return [
+                Finding(
+                    title="External target rejected by network safety policy",
+                    severity=FindingSeverity.LOW,
+                    description=str(exc),
+                    evidence=target,
+                    remediation="Use a publicly routable target that is explicitly authorized for testing.",
+                )
+            ]
 
         # Extract host from URL or use as hostname
         if is_url:
@@ -135,7 +151,7 @@ class BlackBoxAgent(Agent):
             import httpx
 
             with httpx.Client(timeout=5.0, headers={"User-Agent": _SCANNER_USER_AGENT}) as client:
-                response = client.get(target, follow_redirects=True)
+                response = client.get(target, follow_redirects=False)
 
                 # Check for default pages
                 if any(phrase in response.text.lower() for phrase in ["apache", "nginx", "iis"]):
@@ -164,7 +180,7 @@ class BlackBoxAgent(Agent):
             import httpx
 
             with httpx.Client(
-                timeout=5.0, headers={"User-Agent": _SCANNER_USER_AGENT}, follow_redirects=True
+                timeout=5.0, headers={"User-Agent": _SCANNER_USER_AGENT}, follow_redirects=False
             ) as client:
                 pages = self._crawl(client, target)
 

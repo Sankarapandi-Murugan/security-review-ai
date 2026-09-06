@@ -5,8 +5,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
 from uuid import UUID
+
+from security_review.infrastructure.security.outbound_url_validation import (
+    UnsafeOutboundUrlError,
+    validate_public_http_url,
+)
 
 _ALLOWED_URL_SCHEMES = ("https://", "http://")
 
@@ -35,9 +39,10 @@ def _validate_repository_url(url: str) -> None:
         raise RepositoryIngestionError(
             "Only http:// and https:// repository URLs are supported."
         )
-    parsed = urlparse(url)
-    if not parsed.hostname:
-        raise RepositoryIngestionError("Repository URL must include a hostname.")
+    try:
+        validate_public_http_url(url)
+    except UnsafeOutboundUrlError as exc:
+        raise RepositoryIngestionError(str(exc)) from exc
 
 
 def _validate_branch(branch: str) -> str:
@@ -87,6 +92,8 @@ class GitRepositoryIngestionService:
                     "protocol.file.allow=never",
                     "-c",
                     "protocol.ext.allow=never",
+                    "-c",
+                    "http.followRedirects=false",
                     "clone",
                     "--depth",
                     "1",
@@ -101,6 +108,7 @@ class GitRepositoryIngestionService:
                 text=True,
                 timeout=self._timeout_seconds,
                 env=env,
+                check=False,
             )
         except subprocess.TimeoutExpired as exc:
             shutil.rmtree(dest, ignore_errors=True)
@@ -123,6 +131,7 @@ class GitRepositoryIngestionService:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                check=False,
             )
             return result.stdout.strip()
         except (subprocess.TimeoutExpired, OSError):

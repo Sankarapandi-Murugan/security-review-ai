@@ -5,6 +5,7 @@ from security_review.application.billing_service import BillingService
 from security_review.domain.auth.models import User, UserRole
 from security_review.domain.billing.models import PlanResponse, SubscribeRequest, UsageResponse, plan_to_response
 from security_review.infrastructure.billing.payment_provider import PaymentProviderError
+from security_review.infrastructure.security.public_url import get_public_base_url
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 service = BillingService()
@@ -23,11 +24,10 @@ def get_usage(organization_id=Depends(get_current_organization_id)) -> UsageResp
 @router.post("/subscribe", response_model=PlanResponse)
 def subscribe(
     payload: SubscribeRequest,
-    request: Request,
     organization_id=Depends(get_current_organization_id),
     current_user: User = Depends(require_roles(UserRole.OWNER)),
 ) -> dict:
-    base_url = str(request.base_url).rstrip("/")
+    base_url = get_public_base_url()
     try:
         definition, checkout_url = service.change_plan(
             organization_id,

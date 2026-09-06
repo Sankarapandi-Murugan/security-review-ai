@@ -65,5 +65,15 @@ def test_passes_with_strong_unique_secrets(monkeypatch):
     monkeypatch.setenv("SECURITY_REVIEW_AUTH_REQUIRED", "true")
     monkeypatch.setenv("SECURITY_REVIEW_API_KEY", "a-real-unique-production-api-key")
     monkeypatch.setenv("SECURITY_REVIEW_WEBHOOK_SECRET", "a-real-unique-webhook-secret")
+    monkeypatch.setenv("SECURITY_REVIEW_PUBLIC_BASE_URL", "https://app.vigil.example")
 
     validate_production_secrets()  # must not raise
+
+
+def test_raises_when_public_base_url_is_missing_in_production(monkeypatch):
+    monkeypatch.setenv("SECURITY_REVIEW_ENVIRONMENT", "production")
+    monkeypatch.setenv("SECURITY_REVIEW_JWT_SECRET", "a" * 40)
+    monkeypatch.delenv("SECURITY_REVIEW_PUBLIC_BASE_URL", raising=False)
+
+    with pytest.raises(InsecureConfigurationError, match="PUBLIC_BASE_URL"):
+        validate_production_secrets()

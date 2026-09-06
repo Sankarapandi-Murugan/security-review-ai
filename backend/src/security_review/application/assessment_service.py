@@ -39,6 +39,10 @@ from security_review.infrastructure.persistence.sqlite_audit_log_repository impo
     SqliteAuditLogRepository,
 )
 from security_review.infrastructure.scanners.agent_factory import AgentFactory
+from security_review.infrastructure.security.outbound_url_validation import (
+    UnsafeOutboundUrlError,
+    validate_public_http_url,
+)
 from security_review.infrastructure.vcs.git_repository_ingestion_service import (
     GitRepositoryIngestionService,
     RepositoryIngestionError,
@@ -306,6 +310,12 @@ class AssessmentService:
 
     def _notify_webhook(self, scan_job: ScanJob, findings: list[Finding]) -> None:
         if not scan_job.webhook_url:
+            return
+
+        try:
+            validate_public_http_url(scan_job.webhook_url)
+        except UnsafeOutboundUrlError:
+            logger.warning("Webhook delivery skipped because its URL is not publicly routable.")
             return
 
         payload = {
