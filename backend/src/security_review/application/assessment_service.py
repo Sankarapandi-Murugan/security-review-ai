@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import shutil
 import stat
@@ -42,6 +43,8 @@ from security_review.infrastructure.vcs.git_repository_ingestion_service import 
     GitRepositoryIngestionService,
     RepositoryIngestionError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AssessmentService:
@@ -235,6 +238,15 @@ class AssessmentService:
         assessment = repository.get(assessment_id)
         scan_job = self._get_scan_job(assessment, scan_job_id)
 
+        logger.debug(
+            "scan job started",
+            extra={
+                "assessment_id": str(assessment_id),
+                "scan_job_id": str(scan_job_id),
+                "agent_type": scan_job.agent_type.value,
+                "target": scan_job.target,
+            },
+        )
         scan_job.status = ScanStatus.RUNNING
         scan_job.started_at = datetime.now(UTC)
         assessment.updated_at = datetime.now(UTC)
@@ -242,17 +254,44 @@ class AssessmentService:
 
         findings: list[Finding] = []
         try:
+            logger.debug(
+                "creating scan agent",
+                extra={"scan_job_id": str(scan_job_id), "agent_type": scan_job.agent_type.value},
+            )
             agent = AgentFactory.create(scan_job.agent_type)
+            logger.debug(
+                "executing scan agent",
+                extra={
+                    "scan_job_id": str(scan_job_id),
+                    "agent_type": scan_job.agent_type.value,
+                    "authorized": scan_job.target_authorization_confirmed,
+                },
+            )
             findings = agent.execute(
                 scan_job.target, authorized=scan_job.target_authorization_confirmed
             )
             assessment.findings.extend(findings)
             scan_job.status = ScanStatus.COMPLETED
             scan_job.completed_at = datetime.now(UTC)
+            logger.debug(
+                "scan job completed",
+                extra={
+                    "scan_job_id": str(scan_job_id),
+                    "agent_type": scan_job.agent_type.value,
+                    "finding_count": len(findings),
+                },
+            )
         except Exception as exc:
             scan_job.status = ScanStatus.FAILED
             scan_job.completed_at = datetime.now(UTC)
             scan_job.error_message = str(exc)
+            logger.exception(
+                "scan job failed",
+                extra={
+                    "scan_job_id": str(scan_job_id),
+                    "agent_type": scan_job.agent_type.value,
+                },
+            )
         finally:
             self._reconcile_assessment_status(assessment)
             assessment.updated_at = datetime.now(UTC)
